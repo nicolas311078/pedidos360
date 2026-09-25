@@ -37,15 +37,9 @@ export function Layout() {
         </nav>
         <div className="navbar-user">
           {user && (
-            <>
-              <span className="user-badge">
-                {user.username}
-                <small className={`badge-${user.role.toLowerCase()}`}>{user.role}</small>
-              </span>
-              <button className="btn btn-outline" onClick={handleLogout}>
-                Salir
-              </button>
-            </>
+            <button className="btn btn-outline" onClick={handleLogout}>
+              Salir
+            </button>
           )}
         </div>
       </header>

@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
 export function LoginPage() {
-  const { user, hasValidSession, logout } = useAuth()
+  const { hasValidSession, logout } = useAuth()
   const navigate = useNavigate()
 
   // Se navega con la URL ABSOLUTA del BFF público (no por el proxy de Vite):
@@ -34,10 +34,7 @@ export function LoginPage() {
       <div className="login-page">
         <div className="login-card">
           <h1>Pedidos360</h1>
-          <p className="muted">
-            Ya tenés una sesión iniciada
-            {user ? ` como ${user.username} (${user.role})` : ''}.
-          </p>
+          <p className="muted">Ya tenés una sesión iniciada.</p>
 
           <button type="button" className="btn btn-primary btn-block" onClick={handleContinue}>
             Continuar con la sesión actual
