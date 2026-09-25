@@ -28,7 +28,7 @@ public class UserService {
     public UserResponse getProfile(){
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
 
-        User user = userRepository.findByUsername(username)
+        User user = userRepository.findByUsernameIgnoreCase(username)
                 .orElseThrow(()-> new UsernameNotFoundException("user no encontrado: " + username));
         return mapToResponse(user);
     }

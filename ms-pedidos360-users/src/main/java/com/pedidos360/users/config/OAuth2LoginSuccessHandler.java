@@ -39,7 +39,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         String email = extractEmail(authentication);
         Role role = resolveRole(authentication);
 
-        User user = userRepository.findByEmail(email)
+        User user = userRepository.findByEmailIgnoreCase(email)
                 .map(existing -> {
                     if (existing.getRole() != role) {
                         existing.setRole(role);

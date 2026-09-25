@@ -26,11 +26,11 @@ public class AuthService {
     @Deprecated(forRemoval = true)
     public AuthResponse register (RegisterRequest request){
 
-        if (userRepository.existsByUsername(request.getUsername())){
+        if (userRepository.existsByUsernameIgnoreCase(request.getUsername())){
             throw new UserAlreadyExistException("Ya se ha utilizado el username de: " + request.getUsername());
         }
 
-        if(userRepository.existsByEmail(request.getEmail())) {
+        if(userRepository.existsByEmailIgnoreCase(request.getEmail())) {
             throw new UserAlreadyExistException("Ya se ha utilizado el email de: " + request.getEmail());
         }
 
@@ -55,7 +55,7 @@ public class AuthService {
                 )
         );
 
-        User user = userRepository.findByUsername (request.getUsername())
+        User user = userRepository.findByUsernameIgnoreCase (request.getUsername())
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
 
         String token = jwtService.generateToken(user);
