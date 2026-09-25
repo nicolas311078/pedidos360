@@ -43,7 +43,7 @@ export function CatalogPage() {
           <div className="card" key={product.id}>
             <div className="card-body">
               <h3>{product.name}</h3>
-              <p className="muted">{product.description}</p>
+              {product.description && <p className="muted">{product.description}</p>}
               <p className="category-chip">{product.category.name}</p>
               <p className="price">{formatPrice(product.price)}</p>
               <p className="muted">

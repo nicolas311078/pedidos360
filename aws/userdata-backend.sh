@@ -102,7 +102,9 @@ for i in $(seq 1 60); do
 done
 
 # ---------- Seed del catálogo (reproducible: misma data que local) ----------
-docker exec pedidos360-db psql -U postgres -d catalog_db -v ON_ERROR_STOP=1 -c "
+# PGCLIENTENCODING=UTF8: evita que psql interprete los bytes UTF-8 del seed
+# como Latin-1 (mojibake tipo "AzÃºcar")
+docker exec -e PGCLIENTENCODING=UTF8 pedidos360-db psql -U postgres -d catalog_db -v ON_ERROR_STOP=1 -c "
 INSERT INTO categories (name) VALUES ('Bebidas'),('Abarrotes'),('Snacks'),('Limpieza'),('Tecnología') ON CONFLICT (name) DO NOTHING;
 WITH cat AS (SELECT id, name FROM categories)
 INSERT INTO products (name, description, price, stock, category_id)

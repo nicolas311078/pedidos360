@@ -14,7 +14,7 @@ export function AuthCallbackPage() {
       setCredentials(token)
         .then(() => navigate('/', { replace: true }))
         .catch(() => {
-          setError('No se pudo completar el inicio de sesión con Microsoft.')
+          setError('No se pudo completar el inicio de sesión con tu proveedor.')
           navigate('/login', { replace: true })
         })
     } else {

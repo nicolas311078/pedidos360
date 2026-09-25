@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchAllOrders, fetchMyOrders, Order } from '../api/orders'
 import { useAuth } from '../auth/AuthContext'
+import { statusLabel } from '../utils/orderStatus'
 
 export function MyOrdersPage() {
   const { user } = useAuth()
@@ -33,7 +34,7 @@ export function MyOrdersPage() {
               <strong>Orden #{order.id}</strong>
             </span>
             {isOperacion && <span className="muted">{order.userEmail}</span>}
-            <span className={`status status-${order.status.toLowerCase()}`}>{order.status}</span>
+            <span className={`status status-${order.status.toLowerCase()}`}>{statusLabel(order.status)}</span>
             <span className="muted">{new Date(order.createdAt).toLocaleString('es-CL')}</span>
             <strong>{formatPrice(order.total)}</strong>
           </div>

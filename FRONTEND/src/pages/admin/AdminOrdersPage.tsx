@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchAllOrders, Order, updateOrderStatus } from '../../api/orders'
-
-const ORDER_STATUSES = ['CREADO', 'ACEPTADO', 'EN_PREPARACION', 'DESPACHADO', 'ENTREGADO', 'CANCELADO']
+import { ORDER_STATUSES, statusLabel } from '../../utils/orderStatus'
 
 export function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -50,7 +49,7 @@ export function AdminOrdersPage() {
               <td>{new Date(order.createdAt).toLocaleString('es-CL')}</td>
               <td>{formatPrice(order.total)}</td>
               <td>
-                <span className={`status status-${order.status.toLowerCase()}`}>{order.status}</span>
+                <span className={`status status-${order.status.toLowerCase()}`}>{statusLabel(order.status)}</span>
               </td>
               <td>
                 <select
@@ -59,7 +58,7 @@ export function AdminOrdersPage() {
                 >
                   {ORDER_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {s}
+                      {statusLabel(s)}
                     </option>
                   ))}
                 </select>

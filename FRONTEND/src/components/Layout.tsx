@@ -31,7 +31,7 @@ export function Layout() {
           )}
           {user?.role === 'ADMIN' && (
             <span className="admin-menu">
-              <NavLink to="/admin/productos">Admin</NavLink>
+              <NavLink to="/admin">Admin</NavLink>
             </span>
           )}
         </nav>

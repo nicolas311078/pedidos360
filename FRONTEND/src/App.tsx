@@ -11,6 +11,7 @@ import { MyOrdersPage } from './pages/MyOrdersPage'
 import { AdminProductsPage } from './pages/admin/AdminProductsPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminUsersPage } from './pages/admin/AdminUsersPage'
+import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { AdminRoute, OperationRoute, ProtectedRoute } from './routes/AuthGuards'
 
 /**
@@ -54,6 +55,7 @@ export default function App() {
               </Route>
 
               <Route element={<AdminRoute />}>
+                <Route path="/admin" element={<AdminDashboardPage />} />
                 <Route path="/admin/productos" element={<AdminProductsPage />} />
                 <Route path="/admin/ordenes" element={<AdminOrdersPage />} />
                 <Route path="/admin/usuarios" element={<AdminUsersPage />} />
