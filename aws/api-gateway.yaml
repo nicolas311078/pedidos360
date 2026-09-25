@@ -1,0 +1,423 @@
+# AWS API Gateway — Pedidos360 (EP1)
+#
+# Punto único público de entrada al backend según la guía:
+#   - HTTP API (api-gateway-v2) con ruta catch-all -> BFF (ms-pedidos360-bff)
+#   - JWT Authorizer (Lambda) que valida firma HS256 y vigencia del token
+#   - CORS habilitado para el frontend
+#
+# Nota importante (sandbox AWS Academy / voclabs):
+#   - Este lab NO permite crear roles IAM (iam:CreateRole está denegado).
+#   - Por eso la Lambda authorizer reutiliza un rol preexistente del lab
+#     (LabRole, que ya trae permisos de execution y logs) en vez de crear uno.
+#   - El rol se pasa como parámetro AuthorizerRoleArn.
+#
+# Despliegue (usado en la entrega EP1, sandbox AWS Academy):
+#   aws cloudformation deploy \
+#     --template-file api-gateway.yaml \
+#     --stack-name pedidos360-api \
+#     --capabilities CAPABILITY_IAM \
+#     --parameter-overrides \
+#        JwtSecret="<misma JWT_SECRET del .env / user-data>" \
+#        BffUrl="http://pedidos360-alb-571995876.us-east-1.elb.amazonaws.com" \
+#        AllowedOrigin="http://localhost:4200" \
+#        AuthorizerRoleArn="arn:aws:iam::324523428924:role/LabRole" \
+#     --region us-east-1
+#   3. Toma la URL del stage y úsala como VITE_BFF_URL en el frontend.
+#
+# Pruebas de la guía contra la URL del stage (07/dic/2026):
+#   OPTIONS preflight  -> 200 + cabeceras CORS (Access-Control-Allow-*)
+#   sin token          -> 401
+#   firma corrupta     -> 403 (HTTP API v2: deny con identity source presente = 403)
+#   token expirado     -> 403 (ídem; la guía pide 401/403 y el authorizer deniega)
+#   token válido       -> 200 (BFF revalida el JWT antes de reenviar)
+
+Parameters:
+  JwtSecret:
+    Type: String
+    Description: Misma JWT_SECRET que comparten ms-pedidos360-users y ms-pedidos360-bff
+  BffUrl:
+    Type: String
+    Description: URL pública del BFF (ej. https://bff.example.com o http://IP:8080)
+  AllowedOrigin:
+    Type: String
+    Default: "http://localhost:4200"
+    Description: Origen CORS permitido para el frontend
+  AuthorizerRoleArn:
+    Type: String
+    Default: "arn:aws:iam::324523428924:role/LabRole"
+    Description: >-
+      Rol IAM preexistente que asume la Lambda del authorizer. En labs AWS
+      Academy se usa "LabRole" (permitido al asumirlo con iam:PassRole);
+      reutilizarlo evita tener que crear roles IAM desde el stack, que este
+      sandbox no permite.
+
+Resources:
+  # Lambda que valida el JWT (HS256) y genera la decisión de autorización
+  # (REQUEST authorizer, HTTP API, payload 2.0, EnableSimpleResponses).
+  # Pasa el token íntegro en el contexto para que el BFF lo revalide.
+  JwtAuthorizerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Role: !Ref AuthorizerRoleArn
+      Timeout: 10
+      Environment:
+        Variables:
+          JWT_SECRET: !Ref JwtSecret
+      Code:
+        ZipFile: |
+          const crypto = require("crypto");
+
+          // REQUEST authorizer (HTTP API, payload 2.0) con EnableSimpleResponses:
+          // la Lambda debe responder {isAuthorized: bool} (simple response).
+          // Nota: HTTP API NO invoca la Lambda cuando falta el identity source
+          // (Authorization header): responde 401 directo. Por eso las rutas
+          // OAuth (/oauth2, /login, /api/auth) se manejan con rutas NONE
+          // públicas + Lambda proxy (ver OAuthProxyFunction), no aquí.
+          exports.handler = async (event) => {
+            // El token llega en identitySource (array); se acepta también
+            // authorizationToken por compatibilidad.
+            const raw = Array.isArray(event.identitySource)
+              ? event.identitySource[0]
+              : event.authorizationToken;
+            const token = String(raw || "").replace(/^Bearer /, "").trim();
+            if (!token) return deny();
+
+            const payload = verifyJwt(token);
+            if (!payload) return deny();
+
+            return {
+              isAuthorized: true,
+              context: {
+                email: payload.sub || "",
+                role: payload.role || ""
+              }
+            };
+          };
+
+          function verifyJwt(token) {
+            const parts = token.split(".");
+            if (parts.length !== 3) return null;
+            try {
+              const header = JSON.parse(base64url(parts[0]));
+              if (header.alg !== "HS256") return null;
+              const payload = JSON.parse(base64url(parts[1]));
+              const exp = payload.exp;
+              if (!exp || Date.now() / 1000 >= exp) return null;
+              const secret = Buffer.from(process.env.JWT_SECRET, "utf8");
+              const expected = crypto
+                .createHmac("sha256", secret)
+                .update(`${parts[0]}.${parts[1]}`)
+                .digest("base64")
+                .replace(/=+$/, "")
+                .replace(/\+/g, "-")
+                .replace(/\//g, "_");
+              if (expected !== parts[2]) return null;
+              return payload;
+            } catch {
+              return null;
+            }
+          }
+
+          function base64url(s) {
+            return Buffer.from(s, "base64url").toString("utf8");
+          }
+
+          function deny() {
+            return { isAuthorized: false };
+          }
+
+  # Permiso para que API Gateway pueda invocar la Lambda authorizer.
+  # Sin esta política, el Gateway responde 500 "Internal Server Error"
+  # ante cualquier request con token (no puede ejecutar el authorizer).
+  AuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref JwtAuthorizerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/authorizers/*
+
+  # Authorizer asociado a la API
+  Authorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      AuthorizerType: REQUEST
+      IdentitySource:
+        - "$request.header.Authorization"
+      Name: jwt-lambda-authorizer
+      AuthorizerUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JwtAuthorizerFunction.Arn}/invocations
+      AuthorizerPayloadFormatVersion: "2.0"
+      EnableSimpleResponses: true
+      # TTL 0: evitar caché de "deny" (identity source vacío) que seguía
+      # bloqueando las rutas OAuth públicas tras cada cambio de la Lambda.
+      AuthorizerResultTtlInSeconds: 0
+
+  # HTTP API (punto único público)
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: pedidos360-api
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AllowedOrigin
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+          - X-Requested-With
+        MaxAge: 3600
+
+  # Ruta catch-all -> BFF. La cabecera Authorization viaja intacta para que
+  # el BFF revalide el JWT (segunda validación de la guía).
+  ProxyRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "$default"
+      AuthorizerId: !Ref Authorizer
+      AuthorizationType: CUSTOM
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref HttpIntegration
+
+  # ---------------------------------------------------------------------------
+  # Preflight OPTIONS (CORS).
+  # La ruta catch-all lleva un authorizer CUSTOM: un OPTIONS legítimo no tiene
+  # Authorization header, así que el authorizer lo rechazaría con 401 y sin CORS.
+  # Para cumplir la guía (OPTIONS -> 200 + cabeceras CORS) se define una ruta
+  # OPTIONS /{proxy+} con AuthorizationType NONE que responde 200 con las
+  # cabeceras CORS vía una Lambda ligera. HTTP API no soporta integración
+  # MOCK, de ahí la Lambda.
+  # ---------------------------------------------------------------------------
+  PreflightFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Role: !Ref AuthorizerRoleArn
+      Timeout: 5
+      Environment:
+        Variables:
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => ({
+            statusCode: 200,
+            isBase64Encoded: false,
+            headers: {
+              "Access-Control-Allow-Origin": process.env.ALLOWED_ORIGIN,
+              "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+              "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Requested-With",
+              "Access-Control-Max-Age": "3600"
+            },
+            body: ""
+          });
+
+  PreflightPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PreflightFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*
+
+  PreflightIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PreflightFunction.Arn}/invocations
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: 5000
+
+  OptionsRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "OPTIONS /{proxy+}"
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref PreflightIntegration
+
+  # ---------------------------------------------------------------------------
+  # Rutas públicas NONE para el flujo OAuth (login Microsoft Entra ID).
+  # HTTP API NO invoca el authorizer si falta el Authorization header (responde
+  # 401 directo) y las rutas {proxy+} con HTTP_PROXY reenvían el path como "/",
+  # así que el flujo OAuth (que arranca SIN token: navegador -> GET
+  # /oauth2/authorization/azure -> 302 a Microsoft -> callback
+  # /login/oauth2/code/azure) se publica con rutas NONE que apuntan a una
+  # Lambda proxy que reenvía al BFF preservando path, headers, cookies y body.
+  # El BFF trata esas rutas como públicas (isProxyPath) hacia users, que emite
+  # el JWT firmado con la misma JWT_SECRET que validan authorizer y BFF.
+  # ---------------------------------------------------------------------------
+  OAuthProxyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Role: !Ref AuthorizerRoleArn
+      Timeout: 15
+      Environment:
+        Variables:
+          BFF_URL: !Ref BffUrl
+      Code:
+        ZipFile: |
+          const http = require("http");
+
+          // Proxy genérico: reenvía el request al BFF (ALB) preservando
+          // método, path, query, headers y cookies. Devuelve la respuesta en
+          // formato payload 2.0, incluyendo Set-Cookie (sesión OAuth) y
+          // Location (redirect de Microsoft).
+          exports.handler = async (event) => {
+            const target = process.env.BFF_URL;
+            const method = event.requestContext.http.method;
+            // rawPath de HTTP API v2 conserva el stage (p. ej. "/prod/oauth2/...").
+            // El BFF espera el path SIN stage; normaliza quitando el primer
+            // segmento cuando el siguiente es un prefijo público conocido.
+            const rawPath = event.rawPath || "/";
+            const path = rawPath.replace(
+              /^\/[^/]+\/(?=oauth2\/|login\/|api\/auth\/)/,
+              "/"
+            );
+            const query = event.rawQueryString ? "?" + event.rawQueryString : "";
+
+            const headers = {};
+            if (Array.isArray(event.cookies) && event.cookies.length) {
+              headers["cookie"] = event.cookies.join("; ");
+            }
+            // Se pasan las cabeceras de entrada sin host/content-length.
+            if (event.headers) {
+              for (const [k, v] of Object.entries(event.headers)) {
+                const lk = k.toLowerCase();
+                if (["host", "content-length", "connection", "upgrade"].includes(lk)) continue;
+                headers[k] = v;
+              }
+            }
+
+            const body = event.body
+              ? Buffer.from(event.body, event.isBase64Encoded ? "base64" : "utf8")
+              : null;
+
+            return await new Promise((resolve) => {
+              const url = new URL(target + path + query);
+              const req = http.request(url, { method, headers }, (res) => {
+                const chunks = [];
+                res.on("data", (c) => chunks.push(c));
+                res.on("end", () => {
+                  const buf = Buffer.concat(chunks);
+                  const outHeaders = {};
+                  const cookies = [];
+                  for (const [k, v] of Object.entries(res.headers)) {
+                    const lk = k.toLowerCase();
+                    if (lk === "set-cookie") {
+                      (Array.isArray(v) ? v : [v]).forEach((c) => cookies.push(c));
+                    } else if (!["connection", "keep-alive", "transfer-encoding", "content-length", "upgrade"].includes(lk)) {
+                      outHeaders[k] = v;
+                    }
+                  }
+                  resolve({
+                    statusCode: res.statusCode || 502,
+                    headers: outHeaders,
+                    cookies,
+                    body: buf.toString("base64"),
+                    isBase64Encoded: true
+                  });
+                });
+              });
+              req.on("error", (err) => {
+                resolve({
+                  statusCode: 502,
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ error: "oauth proxy error", detail: String(err) })
+                });
+              });
+              if (body) req.write(body);
+              req.end();
+            });
+          };
+
+  OAuthProxyPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref OAuthProxyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*
+
+  OAuthProxyIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OAuthProxyFunction.Arn}/invocations
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: 15000
+
+  OAuthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /oauth2/{proxy+}"
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref OAuthProxyIntegration
+
+  LoginRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /login/{proxy+}"
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref OAuthProxyIntegration
+
+  AuthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "ANY /api/auth/{proxy+}"
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref OAuthProxyIntegration
+
+  HttpIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: HTTP_PROXY
+      IntegrationUri: !Ref BffUrl
+      IntegrationMethod: ANY
+      PayloadFormatVersion: "1.0"
+      ConnectionType: INTERNET
+      TimeoutInMillis: 30000
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: prod
+      AutoDeploy: true
+
+Outputs:
+  ApiUrl:
+    Description: URL pública de la API
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/prod

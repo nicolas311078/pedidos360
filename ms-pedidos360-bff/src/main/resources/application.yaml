@@ -1,0 +1,20 @@
+server:
+  port: ${PORT:8080}
+
+services:
+  users-url: ${USERS_URL:http://localhost:8083}
+  catalog-url: ${CATALOG_URL:http://localhost:8081}
+  orders-url: ${ORDERS_URL:http://localhost:8082}
+
+public:
+  base-url: ${BFF_PUBLIC_BASE:http://localhost:8080}
+
+jwt:
+  secret: ${JWT_SECRET}
+  # Emisor y audiencia que el BFF espera al validar el token firmado por ms-pedidos360-users.
+  expected-issuer: ${JWT_EXPECTED_ISSUER:pedidos360-users}
+  expected-audience: ${JWT_EXPECTED_AUDIENCE:pedidos360-bff}
+  # Tolerancia de desfase de reloj (segundos) al validar iat/exp. Evita 401
+  # intermitentes cuando el reloj del emisor va unos segundos adelante del
+  # servidor (cadena API Gateway -> ALB -> BFF añade latencia).
+  clock-skew-seconds: ${JWT_CLOCK_SKEW_SECONDS:30}

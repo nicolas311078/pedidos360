@@ -1,0 +1,118 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: pedidos360-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-users_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ms-pedidos360-users:
+    build:
+      context: ./ms-pedidos360-users
+    container_name: ms-pedidos360-users
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: users_db
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET:?se requiere JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:?se requiere AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:?se requiere AZURE_CLIENT_SECRET}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:?se requiere AZURE_TENANT_ID}
+      AZURE_REDIRECT_URI: ${AZURE_REDIRECT_URI:-http://localhost:8080/login/oauth2/code/azure}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8080/login/oauth2/code/google}
+      SPA_BASE_URL: ${SPA_BASE_URL:-http://localhost:4200}
+    ports:
+      - "8083:8083"
+
+  ms-pedidos360-catalog:
+    build:
+      context: ./ms-pedidos360-catalog
+    container_name: ms-pedidos360-catalog
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: catalog_db
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "8081:8081"
+
+  ms-pedidos360-orders:
+    build:
+      context: ./ms-pedidos360-orders
+    container_name: ms-pedidos360-orders
+    depends_on:
+      db:
+        condition: service_healthy
+      ms-pedidos360-catalog:
+        condition: service_started
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: orders_db
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      CATALOG_URL: http://ms-pedidos360-catalog:8081
+    ports:
+      - "8082:8082"
+
+  ms-pedidos360-bff:
+    build:
+      context: ./ms-pedidos360-bff
+    container_name: ms-pedidos360-bff
+    depends_on:
+      ms-pedidos360-users:
+        condition: service_started
+      ms-pedidos360-catalog:
+        condition: service_started
+      ms-pedidos360-orders:
+        condition: service_started
+    environment:
+      USERS_URL: http://ms-pedidos360-users:8083
+      CATALOG_URL: http://ms-pedidos360-catalog:8081
+      ORDERS_URL: http://ms-pedidos360-orders:8082
+      BFF_PUBLIC_BASE: ${BFF_PUBLIC_BASE:-http://localhost:8080}
+      JWT_SECRET: ${JWT_SECRET:?se requiere JWT_SECRET}
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./FRONTEND
+    container_name: pedidos360-frontend
+    depends_on:
+      - ms-pedidos360-bff
+    environment:
+      # Proxy Vite para /api y /oauth2 → gateway público (flujo AWS). Para
+      # volver al flujo local: VITE_BFF_URL=http://ms-pedidos360-bff:8080
+      VITE_BFF_URL: ${VITE_BFF_URL:-https://821dbjhp16.execute-api.us-east-1.amazonaws.com/prod}
+      # URL pública del BFF que ve el navegador (login OAuth con URL absoluta).
+      # Gateway AWS (flujo de deployment):
+      #   VITE_PUBLIC_BFF_URL=https://821dbjhp16.execute-api.us-east-1.amazonaws.com/prod
+      # Local (sin gateway): http://localhost:8080
+      VITE_PUBLIC_BFF_URL: ${VITE_PUBLIC_BFF_URL:-https://821dbjhp16.execute-api.us-east-1.amazonaws.com/prod}
+    ports:
+      - "4200:4200"
+
+volumes:
+  pgdata:
