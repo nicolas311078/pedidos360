@@ -1,9 +1,16 @@
-import { useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 
 export function LoginPage() {
-  const { hasValidSession, logout } = useAuth()
-  const navigate = useNavigate()
+  const { hasValidSession } = useAuth()
+
+  // Si ya hay una sesión válida (JWT sin expirar en localStorage) NO se
+  // muestra en /login ninguna información de la sesión activa (ni correo ni
+  // rol, ni opciones "continuar/cambiar de cuenta"): se redirige a la home.
+  // Para entrar con otra cuenta hay que cerrar sesión primero (botón "Salir").
+  if (hasValidSession()) {
+    return <Navigate to="/" replace />
+  }
 
   // Se navega con la URL ABSOLUTA del BFF público (no por el proxy de Vite):
   // así la cookie de sesión OAuth (JSESSIONID) queda en el mismo dominio que
@@ -18,33 +25,6 @@ export function LoginPage() {
   const handleGoogle = () => {
     const publicBff = import.meta.env.VITE_PUBLIC_BFF_URL || 'http://localhost:8080'
     window.location.href = `${publicBff}/oauth2/authorization/google`
-  }
-
-  const handleContinue = () => {
-    navigate('/', { replace: true })
-  }
-
-  const handleSwitchAccount = () => {
-    logout()
-  }
-
-  // Si ya hay una sesión válida: no redirigir en automático, ofrecer elegir.
-  if (hasValidSession()) {
-    return (
-      <div className="login-page">
-        <div className="login-card">
-          <h1>Pedidos360</h1>
-          <p className="muted">Ya tenés una sesión iniciada.</p>
-
-          <button type="button" className="btn btn-primary btn-block" onClick={handleContinue}>
-            Continuar con la sesión actual
-          </button>
-          <button type="button" className="btn btn-outline btn-block" onClick={handleSwitchAccount}>
-            Cambiar de cuenta
-          </button>
-        </div>
-      </div>
-    )
   }
 
   return (
