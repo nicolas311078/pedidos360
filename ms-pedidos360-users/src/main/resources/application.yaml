@@ -10,6 +10,20 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    listener:
+      simple:
+        # ACK/NACK explicito en cada consumidor.
+        acknowledge-mode: manual
+        default-requeue-rejected: false
+        prefetch: 10
+        # No Romper el arranque si RabbitMQ aun no esta listo.
+        missing-queues-fatal: false
   security:
     oauth2:
       client:
@@ -59,3 +73,30 @@ azure:
     - ${AZURE_ROLE_OPERADOR_ID:OPERADOR}
   cliente:
     - ${AZURE_ROLE_CLIENTE_ID:CLIENTE}
+
+# --- Topologia de RabbitMQ (EP3) -------------------------------------------
+# Nombres centralizados de exchanges, colas, routing keys y DLQ.
+# Este servicio consume dos colas: notificaciones (exchange direct) y
+# auditoria (exchange topic).
+messaging:
+  exchanges:
+    direct: pedidos.direct
+    topic: pedidos.topic
+    deadLetter: pedidos.dlx
+  # quorum = cola replicada en los dos nodos del cluster.
+  queueType: quorum
+  queues:
+    notifications:
+      name: notificaciones.pedidos
+      exchange: direct
+      routingKey: pedido.creado
+      deadLetterQueue: notificaciones.pedidos.dlq
+    audit:
+      name: auditoria.pedidos
+      exchange: topic
+      routingKey: pedido.creado
+      deadLetterQueue: auditoria.pedidos.dlq
+  dlq-monitor:
+    # true: registra en logs los mensajes de la DLQ y los libera.
+    # false: los deja retenidos para inspeccion manual en la consola de RabbitMQ.
+    enabled: ${MESSAGING_DLQ_MONITOR_ENABLED:true}

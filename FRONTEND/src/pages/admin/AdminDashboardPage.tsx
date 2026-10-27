@@ -108,6 +108,9 @@ export function AdminDashboardPage() {
             <Link to="/admin/usuarios" className="btn btn-outline btn-block">
               Administrar usuarios
             </Link>
+            <Link to="/admin/mensajeria" className="btn btn-outline btn-block">
+              Mensajería (RabbitMQ)
+            </Link>
           </div>
         </section>
       </div>

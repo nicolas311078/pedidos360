@@ -44,6 +44,9 @@ public class ProxyForwardFilter extends OncePerRequestFilter {
     @Value("${services.orders-url}")
     private String ordersUrl;
 
+    @Value("${services.messaging-admin-url}")
+    private String messagingAdminUrl;
+
     @Value("${public.base-url}")
     private String publicBaseUrl;
 
@@ -187,6 +190,10 @@ public class ProxyForwardFilter extends OncePerRequestFilter {
     }
 
     private Target resolveTarget(String path, String method) {
+        if (path.startsWith("/api/messaging")) {
+            // Microservicio administrador de RabbitMQ: solo ADMIN.
+            return new Target(messagingAdminUrl, true, true);
+        }
         if (path.equals("/api/users")) {
             return new Target(usersUrl, true, true);
         }

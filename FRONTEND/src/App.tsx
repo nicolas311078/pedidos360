@@ -12,6 +12,7 @@ import { AdminProductsPage } from './pages/admin/AdminProductsPage'
 import { AdminOrdersPage } from './pages/admin/AdminOrdersPage'
 import { AdminUsersPage } from './pages/admin/AdminUsersPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
+import { AdminMessagingPage } from './pages/admin/AdminMessagingPage'
 import { AdminRoute, OperationRoute, ProtectedRoute } from './routes/AuthGuards'
 
 /**
@@ -59,6 +60,7 @@ export default function App() {
                 <Route path="/admin/productos" element={<AdminProductsPage />} />
                 <Route path="/admin/ordenes" element={<AdminOrdersPage />} />
                 <Route path="/admin/usuarios" element={<AdminUsersPage />} />
+                <Route path="/admin/mensajeria" element={<AdminMessagingPage />} />
               </Route>
             </Route>
           </Route>

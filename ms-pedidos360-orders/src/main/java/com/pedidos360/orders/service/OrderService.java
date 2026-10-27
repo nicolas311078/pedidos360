@@ -1,6 +1,8 @@
 package com.pedidos360.orders.service;
 
 import com.pedidos360.orders.dto.CreateOrderRequest;
+import com.pedidos360.orders.event.OrderCreatedDomainEvent;
+import com.pedidos360.orders.event.OrderStatusChangedDomainEvent;
 import com.pedidos360.orders.exception.ResourceNotFoundException;
 import com.pedidos360.orders.model.Order;
 import com.pedidos360.orders.model.OrderItem;
@@ -8,6 +10,7 @@ import com.pedidos360.orders.model.OrderStatus;
 import com.pedidos360.orders.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.HttpClientErrorException;
@@ -24,6 +27,7 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final RestClient restClient;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Value("${catalog.url}")
     private String catalogUrl;
@@ -63,7 +67,11 @@ public class OrderService {
         }
 
         order.setTotal(total);
-        return orderRepository.save(order);
+        Order saved = orderRepository.save(order);
+        // Evento de dominio: el puente OrderEventBridge publica a RabbitMQ
+        // despues del commit de la transaccion.
+        applicationEventPublisher.publishEvent(new OrderCreatedDomainEvent(saved.getId()));
+        return saved;
     }
 
     public List<Order> findByUserEmail(String userEmail) {
@@ -98,6 +106,7 @@ public class OrderService {
             throw new IllegalStateException(
                     "No se puede pasar de " + order.getStatus() + " a " + newStatus);
         }
+        OrderStatus previousStatus = order.getStatus();
         order.setStatus(newStatus);
 
         // Regla de negocio de la guía: el stock disminuye al ACEPTAR el pedido.
@@ -106,7 +115,10 @@ public class OrderService {
                 decrementStock(item.getProductId(), item.getQuantity());
             }
         }
-        return orderRepository.save(order);
+        Order saved = orderRepository.save(order);
+        applicationEventPublisher.publishEvent(
+                new OrderStatusChangedDomainEvent(saved.getId(), previousStatus.name()));
+        return saved;
     }
 
     /**

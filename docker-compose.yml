@@ -15,12 +15,63 @@ services:
       timeout: 5s
       retries: 10
 
+  rabbitmq-node1:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq-node1
+    hostname: rabbitmq-node1
+    environment:
+      RABBITMQ_NODENAME: rabbit@rabbitmq-node1
+      # Cookie de Erlang compartida: es lo que permite que node2 se una al cluster.
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:-pedidos360-cluster-cookie}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-pedidos360}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-pedidos360}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-node1-data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
+  rabbitmq-node2:
+    image: rabbitmq:3.13-management-alpine
+    container_name: rabbitmq-node2
+    hostname: rabbitmq-node2
+    environment:
+      RABBITMQ_NODENAME: rabbit@rabbitmq-node2
+      RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE:-pedidos360-cluster-cookie}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-pedidos360}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-pedidos360}
+    ports:
+      - "5673:5672"
+      - "15673:15672"
+    volumes:
+      - rabbitmq-node2-data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    depends_on:
+      rabbitmq-node1:
+        condition: service_healthy
+    # Se une al cluster del node1 solo, con peer discovery (docker/rabbitmq/rabbitmq.conf).
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
   ms-pedidos360-users:
     build:
       context: ./ms-pedidos360-users
     container_name: ms-pedidos360-users
     depends_on:
       db:
+        condition: service_healthy
+      rabbitmq-node1:
         condition: service_healthy
     environment:
       DB_HOST: db
@@ -38,6 +89,11 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:8080/login/oauth2/code/google}
       SPA_BASE_URL: ${SPA_BASE_URL:-http://localhost:4200}
+      RABBITMQ_HOST: rabbitmq-node1
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USER:-pedidos360}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
+      MESSAGING_DLQ_MONITOR_ENABLED: ${MESSAGING_DLQ_MONITOR_ENABLED:-true}
     ports:
       - "8083:8083"
 
@@ -66,6 +122,8 @@ services:
         condition: service_healthy
       ms-pedidos360-catalog:
         condition: service_started
+      rabbitmq-node1:
+        condition: service_healthy
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -73,8 +131,14 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       CATALOG_URL: http://ms-pedidos360-catalog:8081
+      RABBITMQ_HOST: rabbitmq-node1
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USER:-pedidos360}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-pedidos360}
+      MESSAGING_DLQ_MONITOR_ENABLED: ${MESSAGING_DLQ_MONITOR_ENABLED:-true}
     ports:
       - "8082:8082"
+
 
   ms-pedidos360-bff:
     build:
@@ -116,3 +180,6 @@ services:
 
 volumes:
   pgdata:
+  rabbitmq-node1-data:
+  rabbitmq-node2-data:
+

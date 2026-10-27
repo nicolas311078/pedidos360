@@ -18,9 +18,11 @@
 
 ## Qué es
 
-**Pedidos360** es una plataforma de pedidos de supermercado completa: el cliente navega el catálogo, arma un carrito y crea órdenes; el **OPERADOR** gestiona el estado de las órdenes; y el **ADMIN** administra productos, categorías, usuarios y ve un dashboard con KPIs.
+**Pedidos360** es un e-commerce de supermercado con arquitectura de microservicios: el cliente navega el catálogo, arma un carrito y crea órdenes; el **OPERADOR** gestiona el estado de las órdenes; y el **ADMIN** administra productos, categorías, usuarios y ve un dashboard con KPIs.
 
 La autorización está **centralizada en un BFF** que valida el JWT emitido en el login (OAuth2 Authorization Code + PKCE) y enruta cada petición al microservicio correcto, separando **autenticación** (quién eres) de **autorización** (qué puedes hacer).
+
+La parte **asíncrona** (EP3) usa **RabbitMQ** con un **cluster de 2 nodos**: los pedidos publican eventos (`pedido.creado`, `pedido.estado.actualizado`) y otros microservicios los consumen para notificar, auditar y generar comprobantes, con reintentos y **colas de mensajes no entregados (DLQ)**.
 
 ### Características
 
@@ -34,6 +36,7 @@ La autorización está **centralizada en un BFF** que valida el JWT emitido en e
 | **Estados legibles** | "En preparación" en vez de `EN_PREPARACION` en toda la UI |
 | **UI moderna** | Paleta violeta/fucsia, tarjetas y pills redondeadas, navbar con degradado |
 | **Cloud-native** | API Gateway con JWT Authorizer, ALB, EC2 (Docker) y ECR |
+| **Mensajería asíncrona** | RabbitMQ en cluster de 2 nodos, 3 colas quorum con DLQ, exchange direct + topic |
 
 ---
 
@@ -49,6 +52,8 @@ flowchart TB
     USERS["ms-pedidos360-users · :8083"]
     CAT["ms-pedidos360-catalog · :8081"]
     ORD["ms-pedidos360-orders · :8082"]
+    RMQ[["RabbitMQ cluster<br/>node1 :5672 · node2 :5673"]]
+    ADM["ms-pedidos360-rabbit-admin · :8084<br/>admin de colas/exchanges"]
     DB[("PostgreSQL 16<br/>users_db · catalog_db · orders_db")]
     IDP["Microsoft Entra ID / Google"]
 
@@ -58,12 +63,16 @@ flowchart TB
     SPA --> ALB
     ALB -->|"/api /oauth2 /login"| BFF
     ALB -->|"resto (SPA)"| SPA
-    BFF --> USERS & CAT & ORD
+    BFF --> USERS & CAT & ORD & ADM
     USERS --> DB
     CAT --> DB
     ORD --> DB
     ORD -->|"valida precio y descuenta stock"| CAT
     USERS <-->|"OAuth2 callback"| IDP
+    ORD -->|"publica eventos"| RMQ
+    RMQ -->|"notificaciones"| USERS
+    RMQ -->|"tickets"| ORD
+    ADM <-->|"AMQP + API de administración"| RMQ
 ```
 
 > **Regla de oro:** la aplicación solo habla con el **BFF** (o el gateway). Los puertos internos (8081–8083) se exponen únicamente para depuración. Los microservicios internos confían en la red interna; el BFF inyecta `X-User-Email` para las órdenes.
@@ -77,6 +86,7 @@ flowchart TB
 | **Frontend** | React 18 · React Router · Vite · nginx (producción) |
 | **Backend** | Java 21 · Spring Boot 3 · Spring Security · Maven |
 | **Persistencia** | PostgreSQL 16 · Spring Data JPA (una DB por microservicio) |
+| **Mensajería** | RabbitMQ 3.13 (cluster de 2 nodos) · Spring AMQP · colas quorum + DLQ |
 | **Seguridad** | Spring Authorization Server (OAuth2 client) · JWT HS256 |
 | **Entrega** | Docker · Docker Compose · AWS ECR / EC2 |
 | **AWS** | API Gateway HTTP (v2) · Lambda (JWT Authorizer) · ALB · SSM |
@@ -96,7 +106,9 @@ project-cloud-native-ev1-dev
 ├── ms-pedidos360-bff/         # Gateway: JWT, roles, CORS y ruteo (public :8080)
 ├── ms-pedidos360-users/       # Usuarios, login OAuth2, emisión de JWT (:8083)
 ├── ms-pedidos360-catalog/     # Categorías, productos y stock (:8081)
-├── ms-pedidos360-orders/      # Órdenes y reglas de negocio (:8082)
+├── ms-pedidos360-orders/      # Órdenes, reglas de negocio y productor de eventos (:8082)
+├── ms-pedidos360-rabbit-admin/ # Microservicio administrador de RabbitMQ (:8084)
+├── docs/EP3-MENSAJERIA.md     # Diseño de mensajería asíncrona (topología, DLQ, demo)
 ├── docker-compose.yml         # Orquestación local
 ├── docker/postgres/init.sql   # Crea users_db, catalog_db y orders_db
 ├── aws/                       # Despliegue cloud
@@ -117,7 +129,8 @@ project-cloud-native-ev1-dev
 | **ms-pedidos360-bff** | 8080 `público` | — | Valida JWT y roles, CORS y enruta a los servicios internos |
 | **ms-pedidos360-users** | 8083 | `users_db` | Usuarios, OAuth2 con Entra ID/Google y emisión de JWT |
 | **ms-pedidos360-catalog** | 8081 | `catalog_db` | CRUD de categorías y productos, control de stock |
-| **ms-pedidos360-orders** | 8082 | `orders_db` | Órdenes, estados y descuento de stock contra catálogo |
+| **ms-pedidos360-orders** | 8082 | `orders_db` | Órdenes, estados, descuento de stock y publicación de eventos |
+| **ms-pedidos360-rabbit-admin** | 8084 | — | API REST para listar y administrar colas, exchanges y bindings |
 
 > **Base de datos:** un mismo PostgreSQL con **una base por microservicio** (`users_db`, `catalog_db`, `orders_db`) — independencia de datos con footprint mínimo.
 
@@ -149,6 +162,8 @@ Una vez arriba:
 | BFF (único punto de entrada de la API) | http://localhost:8080 |
 | Login Microsoft (OAuth2) | http://localhost:8080/oauth2/authorization/azure |
 | Catálogo (vía BFF) | http://localhost:8080/api/catalog/products |
+| Consola RabbitMQ (node1 / node2) | http://localhost:15672 · http://localhost:15673 |
+| Admin de mensajería (vía BFF, rol ADMIN) | http://localhost:8080/api/messaging/queues |
 
 > Las variables requeridas en `.env`: `JWT_SECRET`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`. `SPA_BASE_URL` define a dónde redirige el backend tras el login (por defecto `http://localhost:4200`).
 
@@ -169,8 +184,11 @@ cd ms-pedidos360-bff        && ./mvnw spring-boot:run   # :8080
 cd ms-pedidos360-users      && ./mvnw spring-boot:run   # :8083
 cd ms-pedidos360-catalog    && ./mvnw spring-boot:run   # :8081
 cd ms-pedidos360-orders     && ./mvnw spring-boot:run   # :8082
+cd ms-pedidos360-rabbit-admin && ./mvnw spring-boot:run # :8084
 cd FRONTEND                 && npm install && npm run dev
 ```
+
+> RabbitMQ también se puede levantar solo: `docker compose up -d rabbitmq-node1 rabbitmq-node2`.
 
 ---
 
@@ -197,6 +215,7 @@ cd FRONTEND                 && npm install && npm run dev
 | `PUT /api/orders/{id}/status` | — | — | Sí | Sí |
 | `POST/PUT/PATCH/DELETE /api/catalog/**` | — | — | — | Sí |
 | `GET /api/users` | — | — | — | Sí |
+| `/api/messaging/**` | — | — | — | Sí |
 
 ### Configurar roles en Microsoft Entra ID (una sola vez)
 
@@ -244,6 +263,23 @@ cd FRONTEND                 && npm install && npm run dev
 
 > El BFF agrega los headers `X-Forwarded-*` y `X-User-Email` automáticamente.
 
+### Mensajería (microservicio administrador de RabbitMQ)
+
+| Método | Ruta | Acceso | Descripción |
+|---|---|---|---|
+| `GET` | `/api/messaging/queues` | ADMIN | Colas del broker con mensajes pendientes y consumidores |
+| `POST` | `/api/messaging/queues` | ADMIN | Crea una cola (`name`, `durable`, `quorum`, DLQ opcional) |
+| `DELETE` | `/api/messaging/queues/{name}` | ADMIN | Elimina una cola |
+| `GET` | `/api/messaging/exchanges` | ADMIN | Exchanges del broker |
+| `POST` | `/api/messaging/exchanges` | ADMIN | Crea un exchange (`name`, `type`: direct/topic/fanout/headers) |
+| `DELETE` | `/api/messaging/exchanges/{name}` | ADMIN | Elimina un exchange |
+| `GET` | `/api/messaging/bindings` | ADMIN | Bindings exchange → cola |
+| `POST` | `/api/messaging/bindings` | ADMIN | Crea un binding (`exchange`, `queue`, `routingKey`) |
+| `DELETE` | `/api/messaging/bindings?exchange=&queue=&routingKey=` | ADMIN | Elimina un binding |
+| `GET` | `/api/messaging/nodes` | ADMIN | Nodos del cluster RabbitMQ |
+
+> Las colas y exchanges de la propia aplicación están **protegidos**: se pueden listar pero no eliminar (responde `409`).
+
 ---
 
 ## Frontend
@@ -260,6 +296,7 @@ cd FRONTEND                 && npm install && npm run dev
 | `/admin/productos` | ADMIN | CRUD de productos y categorías |
 | `/admin/ordenes` | ADMIN | Gestión de órdenes (alias del panel de operación) |
 | `/admin/usuarios` | ADMIN | Listado de usuarios |
+| `/admin/mensajeria` | ADMIN | Consola de RabbitMQ: colas, exchanges, bindings y nodos del cluster |
 
 **Flujo OAuth2:** la SPA navega a `/oauth2/authorization/{azure|google}` → el IdP autentica → redirige al callback → `ms-pedidos360-users` emite el JWT y redirige a `${SPA_BASE_URL}/auth/callback?token=…`, donde la SPA guarda el token y navega al catálogo. El JWT viaja en `localStorage` y se envía como `Authorization: Bearer`.
 
@@ -317,5 +354,8 @@ docker push $REG/pedidos360-frontend:prod
 | `SPA_BASE_URL` | Sí | A dónde redirige users tras el login (`http://localhost:4200` o el ALB) |
 | `AZURE_ROLE_ADMIN_ID` / `AZURE_ROLE_OPERADOR_ID` / `AZURE_ROLE_CLIENTE_ID` | | Value del App Role a mapear (default: `ADMIN`/`OPERADOR`/`CLIENTE`) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | | Opcionales; vacíos ⇒ Google deshabilitado (los usuarios Google entran como CLIENTE) |
+| `RABBITMQ_USER` / `RABBITMQ_PASSWORD` | | Credenciales del broker (por defecto `pedidos360` / `pedidos360`) |
+| `RABBITMQ_ERLANG_COOKIE` | | Cookie de Erlang compartida por los 2 nodos del cluster |
+| `MESSAGING_DLQ_MONITOR_ENABLED` | | `true` (default): el monitor de DLQ registra los mensajes fallidos en logs y los libera. `false`: quedan retenidos en la DLQ para inspección |
 
 > Los secretos reales **nunca** se versionan: `.env` está en `.gitignore`. El repo solo contiene `.env.example` con placeholders.
