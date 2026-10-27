@@ -1,7 +1,5 @@
 #!/bin/bash
-# user-data Pedidos360 EP1 - EC2 (plan B: API Gateway -> ALB -> EC2)
-# FIXME: en produccion, obtener JWT_SECRET y AZURE_CLIENT_SECRET de Secrets Manager/SSM,
-# no versionarlos. Para el lab se dejan inline para reproducibilidad.
+# user-data Pedidos360 - EC2 con RabbitMQ Cluster (2 nodos)
 exec > /var/log/user-data.log 2>&1
 set -e
 
@@ -14,14 +12,25 @@ ACCOUNT=324523428924
 REGION=us-east-1
 REGISTRY=$ACCOUNT.dkr.ecr.$REGION.amazonaws.com
 
-# ---------- Login ECR (via IMDS instance profile LabRole) ----------
+# ---------- Login ECR ----------
 aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $REGISTRY
 
 # ---------- Red interna ----------
 docker network create pedidos360 || true
 
+# ---------- Directorios y config ----------
+mkdir -p /opt/pedidos360/rabbitmq
+
+cat > /opt/pedidos360/rabbitmq/rabbitmq.conf <<'EOF'
+# --- Cluster RabbitMQ de 2 nodos (EP3) --------------------------------------
+# Peer discovery: node2 se une automaticamente a node1
+cluster_formation.peer_discovery_backend = classic_config
+cluster_formation.classic_config.nodes.1 = rabbit@rabbitmq-node1
+cluster_formation.node_cleanup.interval = 10
+cluster_partition_handling = autoheal
+EOF
+
 # ---------- PostgreSQL 16 con init.sql ----------
-mkdir -p /opt/pedidos360
 cat > /opt/pedidos360/init.sql <<'SQL'
 CREATE DATABASE catalog_db;
 CREATE DATABASE orders_db;
@@ -29,6 +38,7 @@ SQL
 
 docker run -d --name pedidos360-db \
   --network pedidos360 --network-alias db \
+  --restart unless-stopped \
   -e POSTGRES_DB=users_db \
   -e POSTGRES_USER=postgres \
   -e POSTGRES_PASSWORD=postgres \
@@ -36,7 +46,7 @@ docker run -d --name pedidos360-db \
   -v pgdata:/var/lib/postgresql/data \
   postgres:16-alpine
 
-# esperar DB lista
+# esperar DB
 for i in $(seq 1 60); do
   if docker exec pedidos360-db pg_isready -U postgres -d users_db >/dev/null 2>&1; then
     echo "DB lista tras $i intentos"
@@ -45,9 +55,63 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
+# ---------- RabbitMQ Cluster (2 nodos) ----------
+echo "Levantando rabbitmq-node1..."
+docker run -d --name rabbitmq-node1 \
+  --network pedidos360 --network-alias rabbitmq-node1 \
+  --hostname rabbitmq-node1 \
+  --restart unless-stopped \
+  -e RABBITMQ_NODENAME=rabbit@rabbitmq-node1 \
+  -e RABBITMQ_ERLANG_COOKIE=pedidos360-cluster-cookie \
+  -e RABBITMQ_DEFAULT_USER=pedidos360 \
+  -e RABBITMQ_DEFAULT_PASS=pedidos360 \
+  -p 5672:5672 \
+  -p 15672:15672 \
+  -v rabbitmq-node1-data:/var/lib/rabbitmq \
+  -v /opt/pedidos360/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro \
+  rabbitmq:3.13-management-alpine
+
+# Esperar a que node1 esté healthy
+echo "Esperando rabbitmq-node1..."
+for i in $(seq 1 60); do
+  if docker exec rabbitmq-node1 rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+    echo "rabbitmq-node1 listo tras $i intentos"
+    break
+  fi
+  sleep 5
+done
+
+echo "Levantando rabbitmq-node2..."
+docker run -d --name rabbitmq-node2 \
+  --network pedidos360 --network-alias rabbitmq-node2 \
+  --hostname rabbitmq-node2 \
+  --restart unless-stopped \
+  -e RABBITMQ_NODENAME=rabbit@rabbitmq-node2 \
+  -e RABBITMQ_ERLANG_COOKIE=pedidos360-cluster-cookie \
+  -e RABBITMQ_DEFAULT_USER=pedidos360 \
+  -e RABBITMQ_DEFAULT_PASS=pedidos360 \
+  -p 5673:5672 \
+  -p 15673:15672 \
+  -v rabbitmq-node2-data:/var/lib/rabbitmq \
+  -v /opt/pedidos360/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro \
+  rabbitmq:3.13-management-alpine
+
+# Esperar a node2
+echo "Esperando rabbitmq-node2..."
+for i in $(seq 1 60); do
+  if docker exec rabbitmq-node2 rabbitmq-diagnostics -q ping >/dev/null 2>&1; then
+    echo "rabbitmq-node2 listo tras $i intentos"
+    break
+  fi
+  sleep 5
+done
+
+echo "RabbitMQ cluster levantado (node1 + node2)"
+
 # ---------- ms-pedidos360-users ----------
 docker run -d --name ms-pedidos360-users \
   --network pedidos360 --network-alias ms-pedidos360-users \
+  --restart unless-stopped \
   -e DB_HOST=db -e DB_PORT=5432 -e DB_NAME=users_db \
   -e DB_USER=postgres -e DB_PASSWORD=postgres \
   -e JWT_SECRET="CHANGE_ME_secret_compartida_HS256_64_chars" \
@@ -60,12 +124,18 @@ docker run -d --name ms-pedidos360-users \
   -e GOOGLE_CLIENT_SECRET="${GOOGLE_CLIENT_SECRET:-}" \
   -e GOOGLE_REDIRECT_URI="https://821dbjhp16.execute-api.us-east-1.amazonaws.com/prod/login/oauth2/code/google" \
   -e SPA_BASE_URL="http://pedidos360-alb-571995876.us-east-1.elb.amazonaws.com" \
+  -e RABBITMQ_HOST=rabbitmq-node1 \
+  -e RABBITMQ_PORT=5672 \
+  -e RABBITMQ_USERNAME=pedidos360 \
+  -e RABBITMQ_PASSWORD=pedidos360 \
+  -e MESSAGING_DLQ_MONITOR_ENABLED=true \
   -p 8083:8083 \
   $REGISTRY/pedidos360-users:latest
 
 # ---------- ms-pedidos360-catalog ----------
 docker run -d --name ms-pedidos360-catalog \
   --network pedidos360 --network-alias ms-pedidos360-catalog \
+  --restart unless-stopped \
   -e DB_HOST=db -e DB_PORT=5432 -e DB_NAME=catalog_db \
   -e DB_USER=postgres -e DB_PASSWORD=postgres \
   -p 8081:8081 \
@@ -74,15 +144,22 @@ docker run -d --name ms-pedidos360-catalog \
 # ---------- ms-pedidos360-orders ----------
 docker run -d --name ms-pedidos360-orders \
   --network pedidos360 --network-alias ms-pedidos360-orders \
+  --restart unless-stopped \
   -e DB_HOST=db -e DB_PORT=5432 -e DB_NAME=orders_db \
   -e DB_USER=postgres -e DB_PASSWORD=postgres \
   -e CATALOG_URL="http://ms-pedidos360-catalog:8081" \
+  -e RABBITMQ_HOST=rabbitmq-node1 \
+  -e RABBITMQ_PORT=5672 \
+  -e RABBITMQ_USERNAME=pedidos360 \
+  -e RABBITMQ_PASSWORD=pedidos360 \
+  -e MESSAGING_DLQ_MONITOR_ENABLED=true \
   -p 8082:8082 \
   $REGISTRY/pedidos360-orders:latest
 
-# ---------- ms-pedidos360-bff (proxy publico, target del ALB) ----------
+# ---------- ms-pedidos360-bff ----------
 docker run -d --name ms-pedidos360-bff \
   --network pedidos360 --network-alias ms-pedidos360-bff \
+  --restart unless-stopped \
   -e USERS_URL="http://ms-pedidos360-users:8083" \
   -e CATALOG_URL="http://ms-pedidos360-catalog:8081" \
   -e ORDERS_URL="http://ms-pedidos360-orders:8082" \
@@ -92,7 +169,7 @@ docker run -d --name ms-pedidos360-bff \
   -p 8080:8080 \
   $REGISTRY/pedidos360-bff:latest
 
-# Esperar a que el BFF levante antes de sembrar el catálogo
+# ---------- Esperar BFF ----------
 for i in $(seq 1 60); do
   if curl -sf http://localhost:8080/api/catalog/products >/dev/null 2>&1; then
     echo "BFF listo tras $i intentos"
@@ -101,33 +178,31 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
-# ---------- Seed del catálogo (reproducible: misma data que local) ----------
-# PGCLIENTENCODING=UTF8: evita que psql interprete los bytes UTF-8 del seed
-# como Latin-1 (mojibake tipo "AzÃºcar")
+# ---------- Seed catálogo ----------
 docker exec -e PGCLIENTENCODING=UTF8 pedidos360-db psql -U postgres -d catalog_db -v ON_ERROR_STOP=1 -c "
 INSERT INTO categories (name) VALUES ('Bebidas'),('Abarrotes'),('Snacks'),('Limpieza'),('Tecnología') ON CONFLICT (name) DO NOTHING;
 WITH cat AS (SELECT id, name FROM categories)
 INSERT INTO products (name, description, price, stock, category_id)
 SELECT v.name, v.description, v.price, v.stock, c.id
 FROM (VALUES
-  ('Coca-Cola 1.5L', 'Bebida gaseosa sabor cola, botella retornable 1.5 litros', 2500, 48),
-  ('Agua mineral 600ml', 'Agua purificada sin gas, botella 600 ml', 1000, 100),
-  ('Jugo natural 1L', 'Jugo de naranja 100% natural, envase 1 litro', 1800, 35),
-  ('Arroz grado 1 1kg', 'Arroz de grano largo, bolsa 1 kg', 1200, 80),
-  ('Fideos tallarines 500g', 'Pasta de sémola de trigo, paquete 500 g', 900, 90),
-  ('Aceite vegetal 1L', 'Aceite mezcla para cocina, botella 1 litro', 3000, 60),
-  ('Harina sin polvos 1kg', 'Harina de trigo para repostería, bolsa 1 kg', 1100, 45),
-  ('Azúcar blanca 1kg', 'Azúcar refinada, bolsa 1 kg', 1300, 70),
-  ('Papas fritas 160g', 'Snack de papas fritas sabor original, bolsa 160 g', 1500, 55),
-  ('Galletas de chocolate 200g', 'Galletas rellenas sabor chocolate, paquete 200 g', 900, 65),
-  ('Chocolate barra 100g', 'Chocolate con leche, barra 100 g', 2000, 40),
-  ('Maní salado 150g', 'Maní tostado con sal, bolsa 150 g', 1200, 50),
-  ('Detergente líquido 3L', 'Detergente para ropa concentrado, botella 3 litros', 3500, 25),
-  ('Cloro gel 1L', 'Lavanda/perfumado, botella 1 litro', 1800, 30),
-  ('Jabón líquido manos 250ml', 'Jabón antibacterial para manos, dispensador 250 ml', 2200, 38),
-  ('Audífonos Bluetooth', 'Audífonos inalámbricos con estuche de carga', 15000, 15),
-  ('Mouse inalámbrico', 'Mouse óptico 2.4GHz, compatible USB', 12000, 20),
-  ('Pendrive USB 64GB', 'Memoria USB 3.0, 64 GB', 8000, 28)
+  ('Coca-Cola 1.5L','Bebida gaseosa sabor cola, botella retornable 1.5 litros',2500,48),
+  ('Agua mineral 600ml','Agua purificada sin gas, botella 600 ml',1000,100),
+  ('Jugo natural 1L','Jugo de naranja 100% natural, envase 1 litro',1800,35),
+  ('Arroz grado 1 1kg','Arroz de grano largo, bolsa 1 kg',1200,80),
+  ('Fideos tallarines 500g','Pasta de sémola de trigo, paquete 500 g',900,90),
+  ('Aceite vegetal 1L','Aceite mezcla para cocina, botella 1 litro',3000,60),
+  ('Harina sin polvos 1kg','Harina de trigo para repostería, bolsa 1 kg',1100,45),
+  ('Azúcar blanca 1kg','Azúcar refinada, bolsa 1 kg',1300,70),
+  ('Papas fritas 160g','Snack de papas fritas sabor original, bolsa 160 g',1500,55),
+  ('Galletas de chocolate 200g','Galletas rellenas sabor chocolate, paquete 200 g',900,65),
+  ('Chocolate barra 100g','Chocolate con leche, barra 100 g',2000,40),
+  ('Maní salado 150g','Maní tostado con sal, bolsa 150 g',1200,50),
+  ('Detergente líquido 3L','Detergente para ropa concentrado, botella 3 litros',3500,25),
+  ('Cloro gel 1L','Lavanda/perfumado, botella 1 litro',1800,30),
+  ('Jabón líquido manos 250ml','Jabón antibacterial para manos, dispensador 250 ml',2200,38),
+  ('Audífonos Bluetooth','Audífonos inalámbricos con estuche de carga',15000,15),
+  ('Mouse inalámbrico','Mouse óptico 2.4GHz, compatible USB',12000,20),
+  ('Pendrive USB 64GB','Memoria USB 3.0, 64 GB',8000,28)
 ) AS v(name, description, price, stock)
 JOIN cat c ON c.name = CASE
   WHEN v.name IN ('Coca-Cola 1.5L','Agua mineral 600ml','Jugo natural 1L') THEN 'Bebidas'
@@ -135,15 +210,13 @@ JOIN cat c ON c.name = CASE
   WHEN v.name IN ('Papas fritas 160g','Galletas de chocolate 200g','Chocolate barra 100g','Maní salado 150g') THEN 'Snacks'
   WHEN v.name IN ('Detergente líquido 3L','Cloro gel 1L','Jabón líquido manos 250ml') THEN 'Limpieza'
   ELSE 'Tecnología'
-END;" || echo "seed catálogo: ya aplicado o DB aun no lista"
+END;" || echo "seed catálogo: ya aplicado"
 
-# ---------- Frontend (SPA + nginx, detras del ALB, puerto 4200) ----------
-# Imagen de produccion: FRONTEND/Dockerfile.prod (vite build + nginx).
-# El ALB enruta / (SPA) y /api/*, /oauth2/*, /login/* (BFF) por reglas de path.
+# ---------- Frontend ----------
 docker run -d --name pedidos360-frontend \
   --restart unless-stopped \
   -p 4200:80 \
   $REGISTRY/pedidos360-frontend:latest
 
-echo "=== user-data completo ==="
+echo "=== DESPLIEGUE CON RABBITMQ CLUSTER COMPLETADO ==="
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
