@@ -23,14 +23,13 @@ public class AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
 
-    @Deprecated(forRemoval = true)
-    public AuthResponse register (RegisterRequest request){
+    public AuthResponse register(RegisterRequest request) {
 
-        if (userRepository.existsByUsernameIgnoreCase(request.getUsername())){
+        if (userRepository.existsByUsernameIgnoreCase(request.getUsername())) {
             throw new UserAlreadyExistException("Ya se ha utilizado el username de: " + request.getUsername());
         }
 
-        if(userRepository.existsByEmailIgnoreCase(request.getEmail())) {
+        if (userRepository.existsByEmailIgnoreCase(request.getEmail())) {
             throw new UserAlreadyExistException("Ya se ha utilizado el email de: " + request.getEmail());
         }
 
@@ -47,15 +46,13 @@ public class AuthService {
         return new AuthResponse(token);
     }
 
-    @Deprecated(forRemoval = true)
-    public AuthResponse login (LoginRequest request) {
+    public AuthResponse login(LoginRequest request) {
 
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword()
-                )
+                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
         );
 
-        User user = userRepository.findByUsernameIgnoreCase (request.getUsername())
+        User user = userRepository.findByUsernameIgnoreCase(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
 
         String token = jwtService.generateToken(user);
