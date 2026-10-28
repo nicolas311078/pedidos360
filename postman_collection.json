@@ -1,0 +1,212 @@
+{
+  "info": {
+    "name": "Pedidos360 - API Collection",
+    "description": "Coleccion de endpoints para probar los microservicios de Pedidos360 (Catalog, Orders, Users, Auth). Base URL por defecto: http://13.220.149.198",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://13.220.149.198", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "userEmail", "value": "cliente@test.com", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Catalog - Products",
+      "item": [
+        {
+          "name": "List all products",
+          "request": { "method": "GET", "url": "{{baseUrl}}:8081/api/catalog/products" }
+        },
+        {
+          "name": "List products by category",
+          "request": { "method": "GET", "url": "{{baseUrl}}:8081/api/catalog/products?categoryId=1" }
+        },
+        {
+          "name": "Get product by id",
+          "request": { "method": "GET", "url": "{{baseUrl}}:8081/api/catalog/products/1" }
+        },
+        {
+          "name": "Create product",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}:8081/api/catalog/products",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Producto de prueba\",\n  \"description\": \"Descripcion de prueba\",\n  \"price\": 1500,\n  \"stock\": 10,\n  \"categoryId\": 1\n}" }
+          }
+        },
+        {
+          "name": "Update product",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}:8081/api/catalog/products/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Producto actualizado\",\n  \"description\": \"Descripcion actualizada\",\n  \"price\": 2000,\n  \"stock\": 15,\n  \"categoryId\": 1\n}" }
+          }
+        },
+        {
+          "name": "Adjust stock (delta)",
+          "request": {
+            "method": "PATCH",
+            "url": "{{baseUrl}}:8081/api/catalog/products/1/stock",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"delta\": -2\n}" }
+          }
+        },
+        {
+          "name": "Delete product",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}:8081/api/catalog/products/1" }
+        }
+      ]
+    },
+    {
+      "name": "Catalog - Categories",
+      "item": [
+        {
+          "name": "List categories",
+          "request": { "method": "GET", "url": "{{baseUrl}}:8081/api/catalog/categories" }
+        },
+        {
+          "name": "Create category",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}:8081/api/catalog/categories",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Categoria de prueba\"\n}" }
+          }
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}:8081/api/catalog/categories/1",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Categoria actualizada\"\n}" }
+          }
+        },
+        {
+          "name": "Delete category",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}:8081/api/catalog/categories/1" }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Create order (publishes to RabbitMQ)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}:8082/api/orders",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Email", "value": "{{userEmail}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"items\": [\n    { \"productId\": 1, \"quantity\": 2 },\n    { \"productId\": 2, \"quantity\": 1 }\n  ]\n}" }
+          }
+        },
+        {
+          "name": "List orders by user",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}:8082/api/orders",
+            "header": [{ "key": "X-User-Email", "value": "{{userEmail}}" }]
+          }
+        },
+        {
+          "name": "List all orders",
+          "request": { "method": "GET", "url": "{{baseUrl}}:8082/api/orders/all" }
+        },
+        {
+          "name": "Get order by id",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}:8082/api/orders/1",
+            "header": [{ "key": "X-User-Email", "value": "{{userEmail}}" }]
+          }
+        },
+        {
+          "name": "Update order status (publishes to RabbitMQ)",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}:8082/api/orders/1/status",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"ACEPTADO\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}:8083/api/auth/register",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"cliente@test.com\",\n  \"password\": \"Password123!\",\n  \"name\": \"Cliente Test\"\n}" }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}:8083/api/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"cliente@test.com\",\n  \"password\": \"Password123!\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get profile (requires JWT)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}:8083/api/users/profile",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        },
+        {
+          "name": "List all users (admin)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}:8083/api/users",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "RabbitMQ Management",
+      "item": [
+        {
+          "name": "List queues (node1)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}:15672/api/queues",
+            "auth": { "type": "basic", "basic": [{ "key": "username", "value": "pedidos360" }, { "key": "password", "value": "pedidos360" }] }
+          }
+        },
+        {
+          "name": "List exchanges (node1)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}:15672/api/exchanges",
+            "auth": { "type": "basic", "basic": [{ "key": "username", "value": "pedidos360" }, { "key": "password", "value": "pedidos360" }] }
+          }
+        },
+        {
+          "name": "List queues (node2)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}:15673/api/queues",
+            "auth": { "type": "basic", "basic": [{ "key": "username", "value": "pedidos360" }, { "key": "password", "value": "pedidos360" }] }
+          }
+        }
+      ]
+    }
+  ]
+}
