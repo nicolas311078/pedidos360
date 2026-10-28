@@ -234,10 +234,12 @@ cd FRONTEND                 && npm install && npm run dev
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | público | Crea usuario local (`name`, `email`, `password`) |
-| `POST` | `/api/auth/login` | público | Login local → devuelve JWT |
+| `POST` | `/api/auth/register` | público | Crea usuario local (`username`, `email`, `password`) con rol `CLIENTE` y devuelve JWT |
+| `POST` | `/api/auth/login` | público | Valida credenciales locales y devuelve JWT |
 | `GET` | `/api/users/profile` | autenticado | Perfil del usuario actual |
 | `GET` | `/api/users` | ADMIN | Lista de usuarios |
+
+Las contraseñas de las cuentas locales se guardan usando BCrypt; el registro público solo crea usuarios con rol `CLIENTE`. Las cuentas de `OPERADOR` y `ADMIN` deben provisionarse administrativamente. El login con Microsoft y Google sigue disponible.
 
 ### Catálogo
 
