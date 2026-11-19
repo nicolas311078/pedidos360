@@ -9,7 +9,7 @@ export function Layout() {
 
   const handleLogout = () => {
     logout()
-    navigate('/login')
+    navigate('/')
   }
 
   const isOperacion = user?.role === 'ADMIN' || user?.role === 'OPERADOR'
@@ -24,19 +24,23 @@ export function Layout() {
           <NavLink to="/" end>
             Catálogo
           </NavLink>
-          <NavLink to="/carrito">Carrito ({count})</NavLink>
-          <NavLink to="/mis-pedidos">Mis pedidos</NavLink>
-          {isOperacion && (
-            <NavLink to="/operacion/ordenes">Operación</NavLink>
-          )}
-          {user?.role === 'ADMIN' && (
-            <span className="admin-menu">
-              <NavLink to="/admin">Admin</NavLink>
-            </span>
+          {user && (
+            <>
+              <NavLink to="/carrito">Carrito ({count})</NavLink>
+              <NavLink to="/mis-pedidos">Mis pedidos</NavLink>
+              {isOperacion && (
+                <NavLink to="/operacion/ordenes">Operación</NavLink>
+              )}
+              {user.role === 'ADMIN' && (
+                <span className="admin-menu">
+                  <NavLink to="/admin">Admin</NavLink>
+                </span>
+              )}
+            </>
           )}
         </nav>
         <div className="navbar-user">
-          {user && (
+          {user ? (
             <>
               <span className="user-badge">
                 {user.username}
@@ -46,6 +50,10 @@ export function Layout() {
                 Salir
               </button>
             </>
+          ) : (
+            <Link to="/login" className="btn btn-outline navbar-login">
+              Iniciar sesión
+            </Link>
           )}
         </div>
       </header>

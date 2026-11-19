@@ -205,7 +205,8 @@ public class ProxyForwardFilter extends OncePerRequestFilter {
             if (adminWrite) {
                 return new Target(catalogUrl, true, true);
             }
-            return new Target(catalogUrl, true, false);
+            boolean readOnly = method.equals("GET") || method.equals("HEAD");
+            return new Target(catalogUrl, !readOnly, false);
         }
         if (path.startsWith("/api/orders")) {
             boolean operacion = method.equals("PUT") && path.matches("^/api/orders/\\d+/status$");

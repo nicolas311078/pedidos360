@@ -290,7 +290,7 @@ Las contraseñas de las cuentas locales se guardan usando BCrypt; el registro p�
 |---|:---:|---|
 | `/login` | público | Login/registro local + botones Microsoft/Google |
 | `/auth/callback` | público | Guarda el JWT devuelto por OAuth2 y entra |
-| `/` | autenticado | Catálogo con filtro por categoría y alta al carrito |
+| `/` | público | Catálogo con filtro por categoría y alta al carrito |
 | `/carrito` | autenticado | Cantidades, total (CLP) y creación de la orden |
 | `/mis-pedidos` | autenticado | Órdenes del usuario con estados legibles |
 | `/operacion/ordenes` | OPERADOR/ADMIN | Cambio de estado de cualquier orden |

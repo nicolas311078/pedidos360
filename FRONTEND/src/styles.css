@@ -127,6 +127,11 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
+.navbar-login {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 /* ---------- Layout ---------- */
 .content {
   max-width: 1120px;
