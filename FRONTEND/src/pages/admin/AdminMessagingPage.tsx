@@ -2,16 +2,23 @@ import { FormEvent, useCallback, useEffect, useState } from 'react'
 import {
   BindingInfo,
   ExchangeInfo,
+  KafkaGroupInfo,
+  KafkaTopicInfo,
   NodeInfo,
   QueueInfo,
   createBinding,
   createExchange,
+  createKafkaTopic,
   createQueue,
   deleteBinding,
   deleteExchange,
+  deleteKafkaTopic,
   deleteQueue,
   fetchBindings,
   fetchExchanges,
+  fetchKafkaBrokers,
+  fetchKafkaGroups,
+  fetchKafkaTopics,
   fetchNodes,
   fetchQueues,
 } from '../../api/messaging'
@@ -38,6 +45,14 @@ export function AdminMessagingPage() {
   const [bindingQueue, setBindingQueue] = useState('')
   const [bindingKey, setBindingKey] = useState('')
 
+  const [tab, setTab] = useState<'rabbit' | 'kafka'>('rabbit')
+  const [kafkaTopics, setKafkaTopics] = useState<KafkaTopicInfo[]>([])
+  const [kafkaGroups, setKafkaGroups] = useState<KafkaGroupInfo[]>([])
+  const [kafkaBrokers, setKafkaBrokers] = useState<NodeInfo[]>([])
+  const [topicName, setTopicName] = useState('')
+  const [topicPartitions, setTopicPartitions] = useState(3)
+  const [topicReplication, setTopicReplication] = useState(3)
+
   const load = useCallback(() => {
     Promise.all([fetchQueues(), fetchExchanges(), fetchBindings(), fetchNodes()])
       .then(([q, e, b, n]) => {
@@ -50,9 +65,21 @@ export function AdminMessagingPage() {
       .catch(() => setError('Error consultando el estado de RabbitMQ'))
   }, [])
 
+  const loadKafka = useCallback(() => {
+    Promise.all([fetchKafkaTopics(), fetchKafkaGroups(), fetchKafkaBrokers()])
+      .then(([t, g, b]) => {
+        setKafkaTopics(t)
+        setKafkaGroups(g)
+        setKafkaBrokers(b)
+        setError('')
+      })
+      .catch(() => setError('Error consultando el estado de Kafka'))
+  }, [])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadKafka()
+  }, [load, loadKafka])
 
   const run = (action: () => Promise<unknown>, success: string) => {
     setError('')
@@ -63,6 +90,31 @@ export function AdminMessagingPage() {
         load()
       })
       .catch((err) => setError(errorMessage(err, 'La operacion fallo')))
+  }
+
+  const runKafka = (action: () => Promise<unknown>, success: string) => {
+    setError('')
+    setOk('')
+    action()
+      .then(() => {
+        setOk(success)
+        loadKafka()
+      })
+      .catch((err) => setError(errorMessage(err, 'La operacion fallo')))
+  }
+
+  const onCreateKafkaTopic = (event: FormEvent) => {
+    event.preventDefault()
+    runKafka(
+      () =>
+        createKafkaTopic({
+          name: topicName.trim(),
+          partitions: topicPartitions,
+          replicationFactor: topicReplication,
+        }),
+      `Topico '${topicName}' creado`
+    )
+    setTopicName('')
   }
 
   const onCreateQueue = (event: FormEvent) => {
@@ -105,6 +157,23 @@ export function AdminMessagingPage() {
       {error && <div className="alert alert-error">{error}</div>}
       {ok && <div className="alert">{ok}</div>}
 
+      <div style={{ display: 'flex', gap: '0.5rem', margin: '1rem 0' }}>
+        <button
+          className={`btn ${tab === 'rabbit' ? 'btn-primary' : ''}`}
+          onClick={() => setTab('rabbit')}
+        >
+          RabbitMQ
+        </button>
+        <button
+          className={`btn ${tab === 'kafka' ? 'btn-primary' : ''}`}
+          onClick={() => setTab('kafka')}
+        >
+          Kafka
+        </button>
+      </div>
+
+      {tab === 'rabbit' && (
+        <>
       <div className="kpi-grid">
         {nodes.map((node) => (
           <div className="kpi-card" key={node.name}>
@@ -317,6 +386,119 @@ export function AdminMessagingPage() {
           </button>
         </form>
       </section>
+        </>
+      )}
+
+      {tab === 'kafka' && (
+        <>
+          <div className="kpi-grid">
+            {kafkaBrokers.map((broker) => (
+              <div className="kpi-card" key={broker.name}>
+                <div className="kpi-value" style={{ fontSize: '1.2rem' }}>
+                  {broker.name}
+                </div>
+                <div className="kpi-label">Broker de Kafka</div>
+                <div className="kpi-sub">{broker.running ? 'en línea' : 'detenido'}</div>
+              </div>
+            ))}
+          </div>
+
+          <h3>Tópicos</h3>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Tópico</th>
+                <th>Particiones</th>
+                <th>Réplicas</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {kafkaTopics
+                .filter((topic) => !topic.name.startsWith('_'))
+                .map((topic) => (
+                  <tr key={topic.name}>
+                    <td>{topic.name}</td>
+                    <td>{topic.partitions}</td>
+                    <td>{topic.replicationFactor}</td>
+                    <td>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={() =>
+                          runKafka(() => deleteKafkaTopic(topic.name), `Tópico '${topic.name}' eliminado`)
+                        }
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+
+          <section className="card">
+            <h3>Crear tópico</h3>
+            <form className="form" onSubmit={onCreateKafkaTopic}>
+              <label>
+                Nombre
+                <input
+                  value={topicName}
+                  onChange={(e) => setTopicName(e.target.value)}
+                  placeholder="demo.eventos.v1"
+                  required
+                />
+              </label>
+              <label>
+                Particiones
+                <input
+                  type="number"
+                  min={1}
+                  value={topicPartitions}
+                  onChange={(e) => setTopicPartitions(Number(e.target.value))}
+                  required
+                />
+              </label>
+              <label>
+                Réplicas
+                <input
+                  type="number"
+                  min={1}
+                  value={topicReplication}
+                  onChange={(e) => setTopicReplication(Number(e.target.value))}
+                  required
+                />
+              </label>
+              <button className="btn btn-primary" type="submit">
+                Crear tópico
+              </button>
+            </form>
+          </section>
+
+          <h3>Consumer groups</h3>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Group ID</th>
+                <th>Estado</th>
+                <th>Miembros</th>
+                <th>Lag</th>
+                <th>Tópicos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kafkaGroups.map((group) => (
+                <tr key={group.groupId}>
+                  <td>{group.groupId}</td>
+                  <td>{group.state}</td>
+                  <td>{group.members}</td>
+                  <td>{group.lag}</td>
+                  <td>{group.topics.join(', ')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </div>
   )
 }

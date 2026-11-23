@@ -127,6 +127,18 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
+.guest-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 /* ---------- Layout ---------- */
 .content {
   max-width: 1120px;
@@ -139,6 +151,26 @@ body {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
+}
+
+.guest-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.1rem;
+  padding: 0.8rem 1rem;
+  border-radius: var(--radius-sm);
+  background: #f5f0ff;
+  border: 1px solid #ddd0ff;
+  color: var(--primary-dark);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.guest-banner .btn {
+  flex-shrink: 0;
 }
 
 h1, h2, h3 {
@@ -249,6 +281,10 @@ textarea:focus {
 
 /* ---------- Buttons ---------- */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   border: none;
   border-radius: 10px;
   padding: 0.6rem 1.1rem;
@@ -256,6 +292,7 @@ textarea:focus {
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
+  text-decoration: none;
   transition: transform 0.12s ease, box-shadow 0.15s ease, filter 0.15s ease;
 }
 
@@ -767,6 +804,18 @@ textarea:focus {
   line-height: 1.55;
 }
 
+.login-back-link {
+  align-self: center;
+  color: var(--primary-dark);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.login-back-link:hover {
+  text-decoration: underline;
+}
+
 .tabs {
   display: flex;
   gap: 0.5rem;
@@ -826,6 +875,12 @@ textarea:focus {
   background: #fdecf0;
   color: #be123c;
   border: 1px solid #fbcfe8;
+}
+
+.alert-info {
+  background: #f5f0ff;
+  color: var(--primary-dark);
+  border: 1px solid #ddd0ff;
 }
 
 /* ---------- Tables ---------- */

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { login, register } from '../api/auth'
 import { useAuth } from '../auth/AuthContext'
@@ -23,9 +23,15 @@ function getAuthErrorMessage(error: unknown): string {
   return 'No se pudo completar el acceso. Inténtalo nuevamente.'
 }
 
+interface LoginLocationState {
+  from?: { pathname?: string; search?: string }
+  message?: string
+}
+
 export function LoginPage() {
   const { hasValidSession, setCredentials } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -33,12 +39,19 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Destino al que se vuelve tras iniciar sesión (p. ej. el catálogo o la
+  // página protegida que el visitante intentó abrir). Por defecto, la home.
+  const state = location.state as LoginLocationState | null
+  const redirectTo = state?.from?.pathname
+    ? `${state.from.pathname}${state.from.search ?? ''}`
+    : '/'
+
   // Si ya hay una sesión válida (JWT sin expirar en localStorage) NO se
   // muestra en /login ninguna información de la sesión activa (ni correo ni
-  // rol, ni opciones "continuar/cambiar de cuenta"): se redirige a la home.
+  // rol, ni opciones "continuar/cambiar de cuenta"): se redirige al destino.
   // Para entrar con otra cuenta hay que cerrar sesión primero (botón "Salir").
   if (hasValidSession()) {
-    return <Navigate to="/" replace />
+    return <Navigate to={redirectTo} replace />
   }
 
   // Se navega con la URL ABSOLUTA del BFF público (no por el proxy de Vite):
@@ -66,7 +79,7 @@ export function LoginPage() {
           ? await login(username, password)
           : await register(username, email, password)
       await setCredentials(response.token)
-      navigate('/', { replace: true })
+      navigate(redirectTo, { replace: true })
     } catch (requestError) {
       setError(getAuthErrorMessage(requestError))
     } finally {
@@ -131,6 +144,12 @@ export function LoginPage() {
           </header>
 
           <form className="login-form" onSubmit={handleSubmit}>
+            {state?.message && (
+              <div className="alert alert-info" role="status">
+                {state.message}
+              </div>
+            )}
+
             <label>
               Nombre de usuario
               <input
@@ -218,6 +237,10 @@ export function LoginPage() {
               también están disponibles para iniciar sesión.
             </p>
           </aside>
+
+          <Link className="login-back-link" to="/">
+            ← Seguir explorando el catálogo sin iniciar sesión
+          </Link>
         </section>
       </div>
     </main>

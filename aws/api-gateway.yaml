@@ -289,7 +289,7 @@ Resources:
             // segmento cuando el siguiente es un prefijo público conocido.
             const rawPath = event.rawPath || "/";
             const path = rawPath.replace(
-              /^\/[^/]+\/(?=oauth2\/|login\/|api\/auth\/)/,
+              /^\/[^/]+\/(?=oauth2\/|login\/|api\/(?:auth|catalog)(?:\/|$))/,
               "/"
             );
             const query = event.rawQueryString ? "?" + event.rawQueryString : "";
@@ -393,6 +393,34 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: "ANY /api/auth/{proxy+}"
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref OAuthProxyIntegration
+
+  # ---------------------------------------------------------------------------
+  # Catálogo público (solo lectura). Un visitante sin sesión debe poder ver
+  # productos y categorías, por lo que GET /api/catalog/** se publica con
+  # AuthorizationType NONE y se reenvía al BFF por el proxy Lambda. La escritura
+  # del catálogo (POST/PUT/DELETE) sigue pasando por la ruta catch-all con JWT.
+  # ---------------------------------------------------------------------------
+  PublicCatalogRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /api/catalog/{proxy+}"
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref OAuthProxyIntegration
+
+  PublicCatalogRootRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /api/catalog"
       AuthorizationType: NONE
       Target: !Join
         - /

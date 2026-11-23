@@ -93,7 +93,7 @@
       "name": "Orders",
       "item": [
         {
-          "name": "Create order (publishes to RabbitMQ)",
+          "name": "Create order (publishes to RabbitMQ + Kafka)",
           "request": {
             "method": "POST",
             "url": "{{baseUrl}}:8082/api/orders",
@@ -204,6 +204,44 @@
             "method": "GET",
             "url": "{{baseUrl}}:15673/api/queues",
             "auth": { "type": "basic", "basic": [{ "key": "username", "value": "pedidos360" }, { "key": "password", "value": "pedidos360" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Kafka (EP5)",
+      "item": [
+        {
+          "name": "List topics (admin :8084)",
+          "request": { "method": "GET", "url": "{{baseUrl}}:8084/api/kafka/topics" }
+        },
+        {
+          "name": "List consumer groups + lag (admin :8084)",
+          "request": { "method": "GET", "url": "{{baseUrl}}:8084/api/kafka/consumer-groups" }
+        },
+        {
+          "name": "List brokers (admin :8084)",
+          "request": { "method": "GET", "url": "{{baseUrl}}:8084/api/kafka/brokers" }
+        },
+        {
+          "name": "Create topic (admin :8084)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"demo.eventos.v1\",\n  \"partitions\": 3,\n  \"replicationFactor\": 3\n}" },
+            "url": "{{baseUrl}}:8084/api/kafka/topics"
+          }
+        },
+        {
+          "name": "Delete topic (admin :8084)",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}:8084/api/kafka/topics/demo.eventos.v1" }
+        },
+        {
+          "name": "List topics via BFF (ADMIN token)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": "{{baseUrl}}:8080/api/kafka/topics"
           }
         }
       ]

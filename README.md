@@ -163,7 +163,9 @@ Una vez arriba:
 | Login Microsoft (OAuth2) | http://localhost:8080/oauth2/authorization/azure |
 | Catálogo (vía BFF) | http://localhost:8080/api/catalog/products |
 | Consola RabbitMQ (node1 / node2) | http://localhost:15672 · http://localhost:15673 |
+| Consola Kafka (Kafka UI) | http://localhost:8085 |
 | Admin de mensajería (vía BFF, rol ADMIN) | http://localhost:8080/api/messaging/queues |
+| Admin de Kafka (vía BFF, rol ADMIN) | http://localhost:8080/api/kafka/topics |
 
 > Las variables requeridas en `.env`: `JWT_SECRET`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`. `SPA_BASE_URL` define a dónde redirige el backend tras el login (por defecto `http://localhost:4200`).
 
@@ -209,7 +211,7 @@ cd FRONTEND                 && npm install && npm run dev
 | Ruta | Público | Autenticado | OPERADOR | ADMIN |
 |---|:---:|:---:|:---:|:---:|
 | `/oauth2/**` · `/login/oauth2/**` · `/api/auth/**` | Sí | — | — | — |
-| `GET /api/catalog/**` | — | Sí | Sí | Sí |
+| `GET /api/catalog/**` | Sí | Sí | Sí | Sí |
 | `GET /api/users/profile` | — | Sí | Sí | Sí |
 | `GET/POST /api/orders` · `GET /api/orders/{id}` | — | Sí | Sí | Sí |
 | `PUT /api/orders/{id}/status` | — | — | Sí | Sí |
@@ -245,13 +247,13 @@ Las contraseñas de las cuentas locales se guardan usando BCrypt; el registro p�
 
 | Método | Ruta | Acceso | Descripción |
 |---|---|---|---|
-| `GET` | `/api/catalog/products?categoryId=` | autenticado | Productos (con filtro por categoría) |
-| `GET` | `/api/catalog/products/{id}` | autenticado | Detalle de un producto |
+| `GET` | `/api/catalog/products?categoryId=` | público | Productos (con filtro por categoría) |
+| `GET` | `/api/catalog/products/{id}` | público | Detalle de un producto |
 | `POST` | `/api/catalog/products` | ADMIN | Crea producto |
 | `PUT` | `/api/catalog/products/{id}` | ADMIN | Actualiza producto |
 | `PATCH` | `/api/catalog/products/{id}/stock` | ADMIN | Ajusta stock |
 | `DELETE` | `/api/catalog/products/{id}` | ADMIN | Elimina producto |
-| `GET/POST/PUT/DELETE` | `/api/catalog/categories[/{id}]` | GET: autenticado<br/>resto: ADMIN | CRUD de categorías |
+| `GET/POST/PUT/DELETE` | `/api/catalog/categories[/{id}]` | GET: público<br/>resto: ADMIN | CRUD de categorías |
 
 ### Órdenes
 
@@ -282,6 +284,18 @@ Las contraseñas de las cuentas locales se guardan usando BCrypt; el registro p�
 
 > Las colas y exchanges de la propia aplicación están **protegidos**: se pueden listar pero no eliminar (responde `409`).
 
+### Kafka (EP5, microservicio `ms-pedidos360-messaging-admin` :8084)
+
+| Método | Ruta | Acceso | Descripción |
+|---|---|---|---|
+| `GET` | `/api/kafka/topics` | ADMIN | Tópicos con particiones y réplicas |
+| `POST` | `/api/kafka/topics` | ADMIN | Crea tópico (`name`, `partitions`, `replicationFactor`) |
+| `DELETE` | `/api/kafka/topics/{name}` | ADMIN | Elimina tópico |
+| `GET` | `/api/kafka/consumer-groups` | ADMIN | Estado, miembros y lag por grupo |
+| `GET` | `/api/kafka/brokers` | ADMIN | Brokers del cluster |
+
+> Kafka **complementa** a RabbitMQ: `OrderEventBridge` publica en ambos. Un fallo de Kafka no afecta al evento Rabbit. Detalle completo en [`docs/EP5-KAFKA.md`](docs/EP5-KAFKA.md).
+
 ---
 
 ## Frontend
@@ -290,7 +304,7 @@ Las contraseñas de las cuentas locales se guardan usando BCrypt; el registro p�
 |---|:---:|---|
 | `/login` | público | Login/registro local + botones Microsoft/Google |
 | `/auth/callback` | público | Guarda el JWT devuelto por OAuth2 y entra |
-| `/` | autenticado | Catálogo con filtro por categoría y alta al carrito |
+| `/` | público | Catálogo con filtro por categoría. Un visitante sin sesión puede explorar; para agregar al carrito se le exige iniciar sesión |
 | `/carrito` | autenticado | Cantidades, total (CLP) y creación de la orden |
 | `/mis-pedidos` | autenticado | Órdenes del usuario con estados legibles |
 | `/operacion/ordenes` | OPERADOR/ADMIN | Cambio de estado de cualquier orden |
@@ -298,7 +312,9 @@ Las contraseñas de las cuentas locales se guardan usando BCrypt; el registro p�
 | `/admin/productos` | ADMIN | CRUD de productos y categorías |
 | `/admin/ordenes` | ADMIN | Gestión de órdenes (alias del panel de operación) |
 | `/admin/usuarios` | ADMIN | Listado de usuarios |
-| `/admin/mensajeria` | ADMIN | Consola de RabbitMQ: colas, exchanges, bindings y nodos del cluster |
+| `/admin/mensajeria` | ADMIN | Consola de mensajería: pestaña RabbitMQ (colas, exchanges, bindings y nodos) y pestaña Kafka (tópicos, brokers y consumer groups) |
+
+> **Acceso sin sesión:** el catálogo (`/`) es público. El navbar muestra el botón **Iniciar sesión** y, al intentar comprar, la SPA redirige a `/login` con un aviso; tras autenticarse vuelve al catálogo. Carrito, pedidos y paneles administrativos siguen protegidos.
 
 **Flujo OAuth2:** la SPA navega a `/oauth2/authorization/{azure|google}` → el IdP autentica → redirige al callback → `ms-pedidos360-users` emite el JWT y redirige a `${SPA_BASE_URL}/auth/callback?token=…`, donde la SPA guarda el token y navega al catálogo. El JWT viaja en `localStorage` y se envía como `Authorization: Bearer`.
 

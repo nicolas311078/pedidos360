@@ -23,6 +23,26 @@ spring:
         prefetch: 10
         # No Romper el arranque si RabbitMQ aun no esta listo.
         missing-queues-fatal: false
+  # --- Kafka (EP5) ----------------------------------------------------------
+  # El productor publica los mismos DTO que RabbitMQ, con StringSerializer
+  # para usar el ObjectMapper (tools.jackson) que ya usa el microservicio.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        retries: 3
+        max.in.flight.requests.per.connection: 5
+    consumer:
+      group-id: ${KAFKA_CREATED_GROUP:pedidos-created-group}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    listener:
+      ack-mode: manual
 
 catalog:
   url: ${CATALOG_URL:http://localhost:8081}
@@ -49,3 +69,14 @@ messaging:
     # true: registra en logs los mensajes de la DLQ y los libera.
     # false: los deja retenidos para inspeccion manual en la consola de RabbitMQ.
     enabled: ${MESSAGING_DLQ_MONITOR_ENABLED:true}
+
+# --- Tópicos y parámetros de administración de Kafka (EP5) -----------------
+# Clave raíz (sin indentar): NO confundir con spring.kafka.
+kafka:
+  topics:
+    created: ${KAFKA_CREATED_TOPIC:pedidos.creados.v1}
+    status: ${KAFKA_STATUS_TOPIC:pedidos.estados.v1}
+  partitions: ${KAFKA_PARTITIONS:3}
+  replication-factor: ${KAFKA_REPLICATION_FACTOR:3}
+  retention-ms: ${KAFKA_RETENTION_MS:604800000}
+  cleanup-policy: ${KAFKA_CLEANUP_POLICY:delete}

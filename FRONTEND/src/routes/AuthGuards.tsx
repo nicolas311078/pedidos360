@@ -6,7 +6,14 @@ export function ProtectedRoute() {
   const location = useLocation()
 
   if (loading) return <div className="centered">Cargando...</div>
-  if (!hasValidSession()) return <Navigate to="/login" state={{ from: location }} replace />
+  if (!hasValidSession())
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: location, message: 'Inicia sesión para continuar.' }}
+        replace
+      />
+    )
   return <Outlet />
 }
 

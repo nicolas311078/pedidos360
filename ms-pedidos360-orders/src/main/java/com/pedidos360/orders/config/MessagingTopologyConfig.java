@@ -29,7 +29,7 @@ import java.util.Map;
  * mensajes se repliquen en los dos nodos del cluster RabbitMQ.
  */
 @Configuration
-@EnableConfigurationProperties(MessagingProperties.class)
+@EnableConfigurationProperties({MessagingProperties.class, KafkaTopicsProperties.class})
 @RequiredArgsConstructor
 public class MessagingTopologyConfig {
 

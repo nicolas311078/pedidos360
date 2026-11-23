@@ -47,6 +47,9 @@ public class ProxyForwardFilter extends OncePerRequestFilter {
     @Value("${services.messaging-admin-url}")
     private String messagingAdminUrl;
 
+    @Value("${services.kafka-admin-url}")
+    private String kafkaAdminUrl;
+
     @Value("${public.base-url}")
     private String publicBaseUrl;
 
@@ -194,6 +197,10 @@ public class ProxyForwardFilter extends OncePerRequestFilter {
             // Microservicio administrador de RabbitMQ: solo ADMIN.
             return new Target(messagingAdminUrl, true, true);
         }
+        if (path.startsWith("/api/kafka")) {
+            // Microservicio administrador de Kafka (EP5): solo ADMIN.
+            return new Target(kafkaAdminUrl, true, true);
+        }
         if (path.equals("/api/users")) {
             return new Target(usersUrl, true, true);
         }
@@ -205,7 +212,11 @@ public class ProxyForwardFilter extends OncePerRequestFilter {
             if (adminWrite) {
                 return new Target(catalogUrl, true, true);
             }
-            return new Target(catalogUrl, true, false);
+            // Solo lectura (GET/HEAD) es pública: los visitantes sin sesión
+            // pueden explorar productos y categorías. Cualquier otro método
+            // requiere JWT (y la escritura, además, rol ADMIN).
+            boolean readOnly = method.equals("GET") || method.equals("HEAD");
+            return new Target(catalogUrl, !readOnly, false);
         }
         if (path.startsWith("/api/orders")) {
             boolean operacion = method.equals("PUT") && path.matches("^/api/orders/\\d+/status$");

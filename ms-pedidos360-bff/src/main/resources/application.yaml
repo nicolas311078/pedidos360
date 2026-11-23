@@ -7,6 +7,8 @@ services:
   orders-url: ${ORDERS_URL:http://localhost:8082}
   # Microservicio administrador de RabbitMQ (EP3).
   messaging-admin-url: ${MESSAGING_ADMIN_URL:http://localhost:8084}
+  # Microservicio administrador de Kafka (EP5). Puede ser el mismo servicio.
+  kafka-admin-url: ${KAFKA_ADMIN_URL:http://localhost:8084}
 
 public:
   base-url: ${BFF_PUBLIC_BASE:http://localhost:8080}

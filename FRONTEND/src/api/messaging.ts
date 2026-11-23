@@ -73,3 +73,36 @@ export const createBinding = (body: NewBinding) =>
 
 export const deleteBinding = (exchange: string, queue: string, routingKey: string) =>
   api.delete('/api/messaging/bindings', { params: { exchange, queue, routingKey } })
+
+// --- Kafka (EP5) -----------------------------------------------------------
+
+export interface KafkaTopicInfo {
+  name: string
+  partitions: number
+  replicationFactor: number
+}
+
+export interface KafkaGroupInfo {
+  groupId: string
+  state: string
+  members: number
+  lag: number
+  topics: string[]
+}
+
+export interface NewKafkaTopic {
+  name: string
+  partitions: number
+  replicationFactor: number
+}
+
+export const fetchKafkaTopics = () => api.get<KafkaTopicInfo[]>('/api/kafka/topics').then((r) => r.data)
+
+export const fetchKafkaGroups = () => api.get<KafkaGroupInfo[]>('/api/kafka/consumer-groups').then((r) => r.data)
+
+export const fetchKafkaBrokers = () => api.get<NodeInfo[]>('/api/kafka/brokers').then((r) => r.data)
+
+export const createKafkaTopic = (body: NewKafkaTopic) => api.post('/api/kafka/topics', body)
+
+export const deleteKafkaTopic = (name: string) =>
+  api.delete(`/api/kafka/topics/${encodeURIComponent(name)}`)

@@ -3,16 +3,18 @@ import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
 
 export function Layout() {
-  const { user, logout } = useAuth()
+  const { user, logout, hasValidSession } = useAuth()
   const { count } = useCart()
   const navigate = useNavigate()
 
+  const isAuthenticated = hasValidSession()
+  const isOperacion = user?.role === 'ADMIN' || user?.role === 'OPERADOR'
+
   const handleLogout = () => {
     logout()
-    navigate('/login')
+    // El catálogo es público, así que al salir se puede seguir explorando.
+    navigate('/')
   }
-
-  const isOperacion = user?.role === 'ADMIN' || user?.role === 'OPERADOR'
 
   return (
     <div className="app">
@@ -24,27 +26,38 @@ export function Layout() {
           <NavLink to="/" end>
             Catálogo
           </NavLink>
-          <NavLink to="/carrito">Carrito ({count})</NavLink>
-          <NavLink to="/mis-pedidos">Mis pedidos</NavLink>
-          {isOperacion && (
-            <NavLink to="/operacion/ordenes">Operación</NavLink>
-          )}
-          {user?.role === 'ADMIN' && (
-            <span className="admin-menu">
-              <NavLink to="/admin">Admin</NavLink>
-            </span>
+          {isAuthenticated && (
+            <>
+              <NavLink to="/carrito">Carrito ({count})</NavLink>
+              <NavLink to="/mis-pedidos">Mis pedidos</NavLink>
+              {isOperacion && <NavLink to="/operacion/ordenes">Operación</NavLink>}
+              {user?.role === 'ADMIN' && (
+                <span className="admin-menu">
+                  <NavLink to="/admin">Admin</NavLink>
+                </span>
+              )}
+            </>
           )}
         </nav>
         <div className="navbar-user">
-          {user && (
+          {isAuthenticated ? (
             <>
-              <span className="user-badge">
-                {user.username}
-                <small className={`badge-${user.role.toLowerCase()}`}>{user.role}</small>
-              </span>
+              {user && (
+                <span className="user-badge">
+                  {user.username}
+                  <small className={`badge-${user.role.toLowerCase()}`}>{user.role}</small>
+                </span>
+              )}
               <button className="btn btn-outline" onClick={handleLogout}>
                 Salir
               </button>
+            </>
+          ) : (
+            <>
+              <span className="guest-badge">Modo invitado</span>
+              <Link className="btn btn-outline" to="/login">
+                Iniciar sesión
+              </Link>
             </>
           )}
         </div>

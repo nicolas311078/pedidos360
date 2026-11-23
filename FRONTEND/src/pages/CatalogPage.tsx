@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Category, fetchCategories, fetchProducts, Product } from '../api/catalog'
+import { useAuth } from '../auth/AuthContext'
 import { useCart } from '../cart/CartContext'
 
 export function CatalogPage() {
   const { add } = useCart()
+  const { hasValidSession } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined)
   const [error, setError] = useState('')
+
+  const isAuthenticated = hasValidSession()
 
   useEffect(() => {
     fetchCategories().then(setCategories).catch(() => setError('Error cargando categorías'))
@@ -22,6 +29,21 @@ export function CatalogPage() {
   const formatPrice = (value: number) =>
     new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(value)
 
+  const handleBuy = (product: Product) => {
+    // Sin sesión no se puede comprar: se envía al login y se vuelve al catálogo
+    // una vez autenticado (el estado "from" lo usa LoginPage).
+    if (!isAuthenticated) {
+      navigate('/login', {
+        state: {
+          from: location,
+          message: 'Inicia sesión para agregar productos al carrito y realizar pedidos.'
+        }
+      })
+      return
+    }
+    add(product)
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -35,6 +57,15 @@ export function CatalogPage() {
           ))}
         </select>
       </div>
+
+      {!isAuthenticated && (
+        <div className="guest-banner">
+          <span>Estás explorando como invitado. Puedes ver los productos, pero necesitas una cuenta para comprar.</span>
+          <Link className="btn btn-primary btn-sm" to="/login">
+            Iniciar sesión
+          </Link>
+        </div>
+      )}
 
       {error && <div className="alert alert-error">{error}</div>}
 
@@ -54,9 +85,13 @@ export function CatalogPage() {
               <button
                 className="btn btn-primary btn-block"
                 disabled={product.stock <= 0}
-                onClick={() => add(product)}
+                onClick={() => handleBuy(product)}
               >
-                {product.stock > 0 ? 'Agregar al carrito' : 'Sin stock'}
+                {product.stock <= 0
+                  ? 'Sin stock'
+                  : isAuthenticated
+                    ? 'Agregar al carrito'
+                    : 'Iniciar sesión para comprar'}
               </button>
             </div>
           </div>

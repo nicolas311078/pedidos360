@@ -1,6 +1,5 @@
-import { useEffect } from 'react'
-import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import { AuthProvider, useAuth } from './auth/AuthContext'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider } from './auth/AuthContext'
 import { CartProvider } from './cart/CartContext'
 import { Layout } from './components/Layout'
 import { LoginPage } from './pages/LoginPage'
@@ -16,38 +15,22 @@ import { AdminMessagingPage } from './pages/admin/AdminMessagingPage'
 import { AdminRoute, OperationRoute, ProtectedRoute } from './routes/AuthGuards'
 
 /**
- * Al abrir la SPA en "/" con una sesión guardada (JWT en localStorage), la app
- * NO entra directo al catálogo: muestra el login ("Ya tenés una sesión iniciada"
- * con Continuar / Cambiar de cuenta). Así siempre se puede volver a elegir
- * cuenta (p. ej. cliente, operador o admin) en cada apertura.
+ * El catálogo es público: cualquier visitante puede ver los productos sin
+ * iniciar sesión. Las rutas que requieren una cuenta (carrito, pedidos y
+ * administración) quedan detrás de ProtectedRoute / OperationRoute / AdminRoute.
  */
-function StartGate() {
-  const { hasValidSession } = useAuth()
-  const navigate = useNavigate()
-  const { pathname } = useLocation()
-
-  useEffect(() => {
-    if (pathname === '/' && hasValidSession()) {
-      navigate('/login', { replace: true })
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  return null
-}
-
 export default function App() {
   return (
     <AuthProvider>
       <CartProvider>
-        <StartGate />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/auth/callback" element={<AuthCallbackPage />} />
 
-          <Route element={<ProtectedRoute />}>
-            <Route element={<Layout />}>
-              <Route path="/" element={<CatalogPage />} />
+          <Route element={<Layout />}>
+            <Route path="/" element={<CatalogPage />} />
+
+            <Route element={<ProtectedRoute />}>
               <Route path="/carrito" element={<CartPage />} />
               <Route path="/mis-pedidos" element={<MyOrdersPage />} />
 

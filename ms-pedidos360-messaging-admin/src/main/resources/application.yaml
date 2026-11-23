@@ -1,0 +1,14 @@
+server:
+  port: ${PORT:8084}
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+# API de administracion de RabbitMQ (management plugin).
+rabbit:
+  management:
+    url: ${RABBITMQ_MANAGEMENT_URL:http://rabbitmq-node1:15672}
+    user: ${RABBITMQ_MANAGEMENT_USER:${RABBITMQ_USER:pedidos360}}
+    password: ${RABBITMQ_MANAGEMENT_PASSWORD:${RABBITMQ_PASSWORD:pedidos360}}
+    vhost: ${RABBITMQ_VHOST:/}

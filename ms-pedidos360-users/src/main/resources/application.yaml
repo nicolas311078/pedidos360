@@ -24,6 +24,25 @@ spring:
         prefetch: 10
         # No Romper el arranque si RabbitMQ aun no esta listo.
         missing-queues-fatal: false
+  # --- Kafka (EP5) ----------------------------------------------------------
+  # Los consumidores usan StringDeserializer + el ObjectMapper del proyecto
+  # (tools.jackson) para no mezclar Jackson 2 y Jackson 3 en el classpath.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        retries: 3
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+    listener:
+      # manual_immediate permite acknowledge() y nack(Duration) en los consumidores.
+      ack-mode: manual_immediate
   security:
     oauth2:
       client:
@@ -100,3 +119,12 @@ messaging:
     # true: registra en logs los mensajes de la DLQ y los libera.
     # false: los deja retenidos para inspeccion manual en la consola de RabbitMQ.
     enabled: ${MESSAGING_DLQ_MONITOR_ENABLED:true}
+
+# --- Tópicos y consumer groups de Kafka (EP5) ------------------------------
+# Clave raíz (sin indentar): NO confundir con spring.kafka (config del cliente).
+kafka:
+  topics:
+    created: ${KAFKA_CREATED_TOPIC:pedidos.creados.v1}
+    status: ${KAFKA_STATUS_TOPIC:pedidos.estados.v1}
+  created-group: ${KAFKA_CREATED_GROUP:pedidos-created-group}
+  status-group: ${KAFKA_STATUS_GROUP:pedidos-status-group}

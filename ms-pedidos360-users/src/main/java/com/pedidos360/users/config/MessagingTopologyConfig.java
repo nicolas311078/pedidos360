@@ -23,7 +23,7 @@ import java.util.Map;
  * (notificaciones y auditoria), cada una con su DLQ.
  */
 @Configuration
-@EnableConfigurationProperties(MessagingProperties.class)
+@EnableConfigurationProperties({MessagingProperties.class, KafkaTopicsProperties.class})
 @RequiredArgsConstructor
 public class MessagingTopologyConfig {
 
