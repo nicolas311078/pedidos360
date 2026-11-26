@@ -80,3 +80,7 @@ kafka:
   replication-factor: ${KAFKA_REPLICATION_FACTOR:3}
   retention-ms: ${KAFKA_RETENTION_MS:604800000}
   cleanup-policy: ${KAFKA_CLEANUP_POLICY:delete}
+  load-test:
+    enabled: ${KAFKA_LOAD_TEST_ENABLED:false}
+    topic: ${KAFKA_LOAD_TEST_TOPIC:demo-estres-topic}
+    max-messages: 2000

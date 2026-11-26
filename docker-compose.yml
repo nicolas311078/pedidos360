@@ -251,6 +251,8 @@ services:
       KAFKA_STATUS_TOPIC: pedidos.estados.v1
       KAFKA_CREATED_GROUP: pedidos-created-group
       KAFKA_STATUS_GROUP: pedidos-status-group
+      KAFKA_LOAD_TEST_ENABLED: ${KAFKA_LOAD_TEST_ENABLED:-false}
+      KAFKA_LOAD_TEST_TOPIC: ${KAFKA_LOAD_TEST_TOPIC:-demo-estres-topic}
     ports:
       - "8083:8083"
 
@@ -300,6 +302,10 @@ services:
       KAFKA_STATUS_TOPIC: pedidos.estados.v1
       KAFKA_PARTITIONS: 3
       KAFKA_REPLICATION_FACTOR: 3
+      KAFKA_LOAD_TEST_ENABLED: ${KAFKA_LOAD_TEST_ENABLED:-false}
+      KAFKA_LOAD_TEST_TOPIC: ${KAFKA_LOAD_TEST_TOPIC:-demo-estres-topic}
+      KAFKA_LOAD_TEST_GROUP: ${KAFKA_LOAD_TEST_GROUP:-demo-estres-slow-consumer}
+      KAFKA_LOAD_TEST_DELAY_MS: ${KAFKA_LOAD_TEST_DELAY_MS:-10}
     ports:
       - "8082:8082"
 

@@ -130,3 +130,9 @@ kafka:
     status: ${KAFKA_STATUS_TOPIC:pedidos.estados.v1}
   created-group: ${KAFKA_CREATED_GROUP:pedidos-created-group}
   status-group: ${KAFKA_STATUS_GROUP:pedidos-status-group}
+  load-test:
+    enabled: ${KAFKA_LOAD_TEST_ENABLED:false}
+    topic: ${KAFKA_LOAD_TEST_TOPIC:demo-estres-topic}
+    group-id: ${KAFKA_LOAD_TEST_GROUP:demo-estres-slow-consumer}
+    delay-ms: ${KAFKA_LOAD_TEST_DELAY_MS:10}
+    concurrency: 1
