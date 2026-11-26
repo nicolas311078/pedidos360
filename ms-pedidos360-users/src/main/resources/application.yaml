@@ -43,6 +43,8 @@ spring:
     listener:
       # manual_immediate permite acknowledge() y nack(Duration) en los consumidores.
       ack-mode: manual_immediate
+      # Un consumidor por partición para los tópicos Kafka de 3 particiones.
+      concurrency: 3
   security:
     oauth2:
       client:
